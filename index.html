@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Structure Viewer (Folder / JSON)</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="icon" href="./assets/favicon.ico" type="image/x-icon" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="title">
+        <div class="h1">Structure Viewer</div>
+        <div class="sub">Folder tree (File System Access API) + JSON tree</div>
+      </div>
+
+      <div class="actions">
+        <button id="btnPickFolder">Pick Folder</button>
+        <label class="fileBtn">
+          Pick JSON
+          <input
+            id="jsonInput"
+            type="file"
+            accept=".json,application/json"
+            hidden
+          />
+        </label>
+
+        <span class="sep"></span>
+
+        <select id="themeSelect" title="Theme">
+          <option value="system">System</option>
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+
+        <label class="check">
+          <input id="exportUseThemeBg" type="checkbox" checked />
+          <span>Export with theme background</span>
+        </label>
+
+        <label class="check">
+          <input id="advancedIcons" type="checkbox" />
+          <span>Advanced icons</span>
+        </label>
+
+        <span class="sep"></span>
+
+        <button id="btnCollapseAll" disabled>Collapse all</button>
+        <button id="btnExpandAll" disabled>Expand all</button>
+
+        <span class="sep"></span>
+
+        <button id="btnExportView" disabled>Export PNG (view)</button>
+        <button id="btnExportFull" disabled>Export PNG (full)</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="panelHeader">
+          <div>
+            <div class="panelTitle">Tree</div>
+            <div id="meta" class="panelMeta">No data loaded.</div>
+          </div>
+          <div class="hint">
+            Tip: Click folder triangles to expand. “Export view” captures
+            exactly what’s open.
+          </div>
+        </div>
+
+        <div id="treeWrap" class="treeWrap">
+          <div id="tree" class="tree"></div>
+        </div>
+      </section>
+
+      <section class="panel side">
+        <div class="panelHeader">
+          <div>
+            <div class="panelTitle">Notes</div>
+            <div class="panelMeta">Compatibility / behavior</div>
+          </div>
+        </div>
+
+        <div class="notes">
+          <ul>
+            <li>
+              <b>Local only.</b> All folders and JSON files are processed
+              entirely in your browser. Nothing is uploaded, stored, or sent
+              anywhere.
+            </li>
+
+            <li>
+              <b>Folder access.</b> Folder browsing is supported in
+              Chromium-based browsers (Chrome, Edge) using the File System
+              Access API. Other browsers can still load JSON files.
+            </li>
+
+            <li>
+              <b>Performance.</b> Expanding very large folder structures or JSON
+              files may take a moment, especially when using “Expand all”.
+            </li>
+
+            <li>
+              <b>Exports.</b> “Export view” saves exactly what is currently
+              expanded. “Export full” temporarily expands everything before
+              exporting.
+            </li>
+
+            <li>
+              <b>JSON display.</b> For arrays of objects, common fields
+              (<code>name</code>, <code>username</code>, <code>title</code>,
+              <code>id</code>) are used as node labels when available.
+            </li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footerInner">
+        <div class="footerLeft">
+          <span>All processing happens locally in your browser</span>
+        </div>
+
+        <div class="footerRight">
+          <a
+            href="https://github.com/smurf11k/tree-view-web"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            GitHub
+          </a>
+          <span class="dot">•</span>
+          <a
+            href="https://github.com/smurf11k/tree-view-web/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Report an issue
+          </a>
+        </div>
+      </div>
+    </footer>
+
+    <!-- html2canvas for PNG export -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="./icons-map.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
