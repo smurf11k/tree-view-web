@@ -2,7 +2,7 @@
 // extension -> vscode-icons key
 window.EXT_TO_ICONKEY = {
   // ---- Code ----
-  js: "javascript",
+  js: "js",
   jsx: "reactjs",
   ts: "typescript",
   tsx: "reactts",
