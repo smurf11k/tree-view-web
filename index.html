@@ -15,44 +15,97 @@
       </div>
 
       <div class="actions">
-        <button id="btnPickFolder">Pick Folder</button>
-        <label class="fileBtn">
-          Pick JSON
+        <div class="group load">
           <input
-            id="jsonInput"
-            type="file"
-            accept=".json,application/json"
-            hidden
+            id="ghRepo"
+            placeholder="owner/repo"
+            title="Format: owner/repo (public repositories only)"
           />
-        </label>
+          <input
+            id="ghBranch"
+            placeholder="branch"
+            title="Optional branch name (defaults to main)"
+          />
+          <button
+            id="btnLoadGitHub"
+            title="Load a public GitHub repository structure"
+          >
+            GitHub
+          </button>
 
-        <span class="sep"></span>
+          <button
+            id="btnPickFolder"
+            title="Pick a local folder from your computer"
+          >
+            Folder
+          </button>
 
-        <select id="themeSelect" title="Theme">
-          <option value="system">System</option>
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-        </select>
+          <label class="fileBtn" title="Load a local JSON file">
+            JSON
+            <input id="jsonInput" type="file" hidden />
+          </label>
+        </div>
 
-        <label class="check">
-          <input id="exportUseThemeBg" type="checkbox" checked />
-          <span>Export with theme background</span>
-        </label>
+        <div class="group tree">
+          <button
+            id="btnCollapseAll"
+            disabled
+            title="Collapse all expanded nodes"
+          >
+            Collapse
+          </button>
+          <button
+            id="btnExpandAll"
+            disabled
+            title="Expand all nodes (may be slow)"
+          >
+            Expand
+          </button>
+        </div>
 
-        <label class="check">
-          <input id="advancedIcons" type="checkbox" />
-          <span>Advanced icons</span>
-        </label>
+        <div class="group export">
+          <button
+            id="btnExportView"
+            disabled
+            title="Export only what is currently visible"
+          >
+            Export view
+          </button>
+          <button
+            id="btnExportFull"
+            disabled
+            title="Expand everything and export the full tree"
+          >
+            Export full
+          </button>
+        </div>
 
-        <span class="sep"></span>
+        <div class="group settings">
+          <label
+            class="check"
+            title="Include the current theme background in exported images"
+          >
+            <input id="exportUseThemeBg" type="checkbox" checked />
+            <span>Theme bg</span>
+          </label>
 
-        <button id="btnCollapseAll" disabled>Collapse all</button>
-        <button id="btnExpandAll" disabled>Expand all</button>
+          <label
+            class="check"
+            title="Use file-type icons instead of generic file icons"
+          >
+            <input id="advancedIcons" type="checkbox" />
+            <span>Icons</span>
+          </label>
 
-        <span class="sep"></span>
-
-        <button id="btnExportView" disabled>Export PNG (view)</button>
-        <button id="btnExportFull" disabled>Export PNG (full)</button>
+          <select
+            id="themeSelect"
+            title="Switch between light, dark, or system theme"
+          >
+            <option value="system">System</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
       </div>
     </header>
 
@@ -94,6 +147,26 @@
               <b>Folder access.</b> Folder browsing is supported in
               Chromium-based browsers (Chrome, Edge) using the File System
               Access API. Other browsers can still load JSON files.
+            </li>
+
+            <li>
+              <b>GitHub load.</b> You can load the folder structure of a
+              <b>public</b> GitHub repository by entering
+              <code>owner/repo</code> (optionally a branch) and clicking
+              “GitHub”. This uses the GitHub API and may be slow or blocked if
+              you hit rate limits.
+            </li>
+
+            <li>
+              <b>Theme background.</b> When enabled, exported PNG images include
+              the current theme background. When disabled, exports use a
+              transparent background.
+            </li>
+
+            <li>
+              <b>Advanced icons.</b> Replaces generic file icons with file-type
+              icons loaded from the web (based on file extensions). This may
+              slightly slow down rendering on very large trees.
             </li>
 
             <li>

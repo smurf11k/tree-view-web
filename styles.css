@@ -132,11 +132,125 @@ main.layout {
   margin-top: 2px;
 }
 
+.title {
+  margin-right: auto; /* pushes everything else to the right */
+}
+
 .actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.actions .group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+.actions .group:first-child {
+  border-left: none;
+  padding-left: 0;
+}
+
+.group.settings {
+  gap: 16px; /* base spacing */
+  opacity: 0.9;
+}
+
+.group.settings select {
+  margin-left: 10px; /* extra separation from checkboxes */
+  font-size: 12px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Hide default checkbox */
+.check input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  display: inline-grid;
+  place-content: center;
+}
+
+/* Checked state */
+.check input:checked {
+  background: var(--btnHover);
+  border-color: var(--btnHover);
+}
+
+/* Checkmark */
+.check input:checked::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: var(--text);
+  border-radius: 2px;
+}
+
+/* Hover */
+.check:hover input {
+  border-color: var(--muted);
+}
+
+.actions input[type="text"],
+.actions input:not([type]) {
+  width: 140px;
+  padding: 7px 8px;
+  font-size: 12px;
+  border-radius: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.actions input::placeholder {
+  color: var(--muted);
+}
+
+.actions button {
+  font-size: 12px;
+  padding: 7px 10px;
+}
+
+.group.export button {
+  font-weight: 600;
+}
+
+.group.export button:first-child {
+  opacity: 0.85;
+}
+
+.group.export button:last-child {
+  background: var(--btnHover);
+}
+
+@media (max-width: 900px) {
+  .actions {
+    justify-content: flex-end;
+  }
+
+  .actions .group {
+    border-left: none;
+    padding-left: 0;
+  }
 }
 
 /* =========================
@@ -194,6 +308,12 @@ select {
   margin: 0 2px;
 }
 
+.sep.break {
+  display: block;
+  width: 100%;
+  height: 0;
+}
+
 .check {
   display: inline-flex;
   align-items: center;
@@ -213,7 +333,7 @@ select {
 
 .layout {
   display: grid;
-  grid-template-columns: 1fr 360px;
+  grid-template-columns: 1fr 420px;
   gap: 14px;
   padding: 14px;
 }

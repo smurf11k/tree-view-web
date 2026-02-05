@@ -1,6 +1,6 @@
 # Structure Viewer
 
-A lightweight, browser-based tool for visualizing **folder structures** and **JSON data** as an interactive tree — with optional advanced file-type icons and PNG export.
+A lightweight, browser-based tool for visualizing **folder structures**, **JSON data**, and **public GitHub repositories** as an interactive tree — with optional advanced file-type icons and PNG export.
 
 Built to be fast, privacy-friendly, and dependency-light.  
 Runs entirely in the browser. No uploads. No servers.
@@ -30,6 +30,23 @@ Runs entirely in the browser. No uploads. No servers.
 
 ---
 
+### 🌍 GitHub Repository Viewer (Public Repos)
+
+- Load the folder structure of **public GitHub repositories**
+- Enter `owner/repo` (optionally a branch name)
+- Uses the GitHub REST API to fetch the repository tree
+- Fully read-only — no authentication required
+
+**Notes:**
+
+- Only public repositories are supported
+- Very large repositories may load slowly
+- GitHub API rate limits may apply
+
+This mode is useful for quickly inspecting project layouts without cloning anything locally.
+
+---
+
 ### 🎨 Themes
 
 - **System**, **Dark**, and **Light** themes
@@ -45,6 +62,37 @@ Runs entirely in the browser. No uploads. No servers.
 - Optional background (transparent or theme-colored)
 - Export width auto-fits to content
 - Icons are rasterized safely for reliable exports
+
+---
+
+## 🖼️ Export Examples
+
+The tool supports exporting the tree view to PNG with different themes and icon modes.
+
+Below are example exports showing the available combinations.
+
+### Advanced Icons Enabled
+
+| Dark theme                                                                               | Light theme                                                                                |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| <img src="img/dark-advanced-view.png" height="400" alt="Dark theme with advanced icons"> | <img src="img/light-advanced-view.png" height="400" alt="Light theme with advanced icons"> |
+
+---
+
+### Generic Icons (Advanced Icons Disabled)
+
+| Dark theme                                                                     | Light theme                                                                      |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| <img src="img/dark-view.png" height="400" alt="Dark theme with generic icons"> | <img src="img/light-view.png" height="400" alt="Light theme with generic icons"> |
+
+---
+
+### Export Notes
+
+- Export width automatically fits the visible content
+- Icons are rasterized for reliable, crisp output
+- **Export View** captures only expanded nodes
+- **Export Full** temporarily expands the entire tree
 
 ---
 

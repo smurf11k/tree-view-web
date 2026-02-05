@@ -1,7 +1,8 @@
 // Structure Viewer
 // - Folder tree via File System Access API (showDirectoryPicker), lazy loads subfolders.
 // - JSON tree via file input.
-// - Export PNG via html2canvas (view or full).
+// - GitHub public repo tree via GitHub API (single recursive tree call).
+// - Export PNG via html2canvas (view or full), including advanced icons.
 
 const elTree = document.getElementById("tree");
 const elMeta = document.getElementById("meta");
@@ -14,8 +15,13 @@ const btnExpandAll = document.getElementById("btnExpandAll");
 const btnExportView = document.getElementById("btnExportView");
 const btnExportFull = document.getElementById("btnExportFull");
 
+// GitHub UI (optional)
+const btnLoadGitHub = document.getElementById("btnLoadGitHub");
+const ghRepo = document.getElementById("ghRepo");
+const ghBranch = document.getElementById("ghBranch");
+
 let currentRoot = null; // generic node model
-let currentMode = null; // "folder" | "json"
+let currentMode = null; // "folder" | "json" | "github"
 
 const PRIORITY_FIELDS = ["name", "username", "title", "id"];
 
@@ -62,8 +68,9 @@ function downloadBlob(blob, filename) {
  *   type: "folder"|"file"|"json",
  *   children: Node[],
  *   hasChildren: boolean,
- *   loaded: boolean, // for folders lazy loading
- *   fsHandle?: FileSystemHandle, // folder/file handle
+ *   loaded: boolean, // for folders lazy loading (local FS only)
+ *   fsHandle?: FileSystemHandle, // local FS
+ *   source?: "fs"|"github"|"json" // optional
  * }
  */
 
@@ -121,9 +128,6 @@ function createNodeElement(node) {
     img.loading = "lazy";
     img.style.verticalAlign = "middle";
     img.style.display = "inline-block";
-
-    // default fallback (emoji as SVG data url is overkill; use empty and show 📄 if fails)
-    // We'll set src once loaded.
     icon.appendChild(img);
 
     if (!ext) {
@@ -132,17 +136,21 @@ function createNodeElement(node) {
     } else {
       getIconDataUrlForExt(ext)
         .then((dataUrl) => {
-          const targetImg = icon.querySelector("img") || img;
-          targetImg.onload = () => {
+          if (!dataUrl) {
+            icon.textContent = "📄";
             icon.dataset.iconReady = "1";
-          };
+            return;
+          }
+
+          const targetImg = icon.querySelector("img") || img;
+          targetImg.onload = () => (icon.dataset.iconReady = "1");
           targetImg.onerror = () => {
             icon.textContent = "📄";
             icon.dataset.iconReady = "1";
           };
           targetImg.src = dataUrl;
 
-          // If it's already cached, onload may not fire — handle that:
+          // If already cached, onload might not fire reliably
           if (targetImg.complete && targetImg.naturalWidth > 0) {
             icon.dataset.iconReady = "1";
           }
@@ -170,7 +178,7 @@ function createNodeElement(node) {
 
   // Toggle behavior
   if (node.hasChildren) {
-    row.addEventListener("click", async (e) => {
+    row.addEventListener("click", async () => {
       // don't toggle if user selects text
       const sel = window.getSelection?.();
       if (sel && sel.toString()) return;
@@ -185,18 +193,27 @@ function createNodeElement(node) {
       // opening:
       container.classList.add("open");
       twisty.textContent = "▼";
-      // Render children for JSON nodes immediately
+
+      // JSON nodes: always have children ready
       if (node.type === "json") {
         renderChildren(node, childrenWrap);
+        return;
       }
 
-      // lazy load for folder nodes
-      if (node.type === "folder" && !node.loaded) {
+      // Folder nodes:
+      if (node.type === "folder") {
+        // GitHub folders (and any pre-built folder tree) must render immediately
+        if (node.loaded) {
+          renderChildren(node, childrenWrap);
+          return;
+        }
+
+        // local FS folders: lazy load
         twisty.textContent = "⏳";
         try {
           await loadFolderChildren(node);
-          renderChildren(node, childrenWrap);
           node.loaded = true;
+          renderChildren(node, childrenWrap);
           twisty.textContent = "▼";
         } catch (err) {
           console.error(err);
@@ -236,6 +253,7 @@ function findNodeElementById(nodeId) {
 function setNodeOpenState(nodeEl, open) {
   const twisty = nodeEl.querySelector(":scope > .node > .twisty");
   if (!twisty) return;
+
   if (open) {
     nodeEl.classList.add("open");
     if (!twisty.classList.contains("hidden")) twisty.textContent = "▼";
@@ -247,6 +265,42 @@ function setNodeOpenState(nodeEl, open) {
 
 function collectAllNodeElements() {
   return Array.from(elTree.querySelectorAll("[data-node-id]"));
+}
+
+// Restore open state properly by ALSO rendering children where needed
+async function restoreOpenState(openSet) {
+  if (!currentRoot || !openSet || openSet.size === 0) return;
+
+  const queue = [currentRoot];
+  while (queue.length) {
+    const node = queue.shift();
+    const shouldOpen = openSet.has(node.id);
+    if (!shouldOpen) continue;
+
+    const el = findNodeElementById(node.id);
+    if (!el) continue;
+
+    setNodeOpenState(el, true);
+
+    const childrenWrap = el.querySelector(":scope > .children");
+    if (!childrenWrap) continue;
+
+    // Ensure children exist in DOM before trying to open deeper ones
+    if (node.type === "json") {
+      renderChildren(node, childrenWrap);
+    } else if (node.type === "folder") {
+      if (node.loaded) {
+        renderChildren(node, childrenWrap);
+      } else {
+        // local FS only
+        await loadFolderChildren(node);
+        node.loaded = true;
+        renderChildren(node, childrenWrap);
+      }
+    }
+
+    for (const ch of node.children) queue.push(ch);
+  }
 }
 
 // ------------------------
@@ -319,19 +373,34 @@ let advancedIconsEnabled = false;
 // Cache: ext -> dataURL
 const ICON_CACHE = new Map();
 
-// Optional persistent cache (can be disabled)
+// Optional persistent cache
 const ICON_CACHE_LS_KEY = "sv_icon_cache_v1";
-const ICON_CACHE_MAX = 200; // keep it bounded
+const ICON_CACHE_MAX = 200;
 
+// Must be loaded BEFORE app.js in index.html
 const EXT_TO_ICONKEY = window.EXT_TO_ICONKEY || {};
 
-// Base URL for vscode-icons (GitHub raw)
+// Some vscode-icons keys differ / move. This adds resilience (incl. your .js case).
+const KEY_FALLBACKS = {
+  javascript: ["js", "nodejs", "node"],
+  typescript: ["ts"],
+  reactjs: ["react"],
+  reactts: ["react"],
+  markdown: ["md"],
+  csharp: ["cs"],
+  yaml: ["yml"],
+  shell: ["sh"],
+  powershell: ["ps"],
+  powerpoint: ["ppt"],
+  excel: ["xls"],
+  word: ["doc"],
+};
+
+// Base URL for vscode-icons
 const VSCODE_ICONS_BASE =
   "https://raw.githubusercontent.com/vscode-icons/vscode-icons/master/icons/";
 
-// Icons in that repo are named like: file_type_<key>.svg for most
 function iconUrlForKey(key) {
-  // Many keys follow this convention:
   return `${VSCODE_ICONS_BASE}file_type_${key}.svg`;
 }
 
@@ -359,36 +428,30 @@ function safeCacheSave() {
   } catch {}
 }
 
-// Fetch remote icon and convert to data URL (export-safe)
-async function fetchIconAsPngDataUrl(url, size = 16) {
+// Fetch remote SVG and convert to PNG data URL (export-safe)
+async function fetchIconAsPngDataUrl(url, size = 32) {
   const res = await fetch(url, { mode: "cors" });
   if (!res.ok) throw new Error(`Icon fetch failed: ${res.status}`);
   const svgText = await res.text();
 
-  // Ensure SVG has xmlns (required for <img> in some cases)
   const normalizedSvg = svgText.includes('xmlns="http://www.w3.org/2000/svg"')
     ? svgText
     : svgText.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
 
-  // Make a data URL from the SVG text
   const svgDataUrl =
     "data:image/svg+xml;charset=utf-8," + encodeURIComponent(normalizedSvg);
 
-  // Rasterize to PNG so html2canvas can never mess up sizing
   const img = new Image();
   img.decoding = "async";
-  img.crossOrigin = "anonymous"; // safe even for data URLs
+  img.crossOrigin = "anonymous";
 
-  const pngDataUrl = await new Promise((resolve, reject) => {
+  return await new Promise((resolve, reject) => {
     img.onload = () => {
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext("2d");
 
-      // Draw centered, scaled to fit
-      ctx.clearRect(0, 0, size, size);
-      //ctx.drawImage(img, 0, 0, size, size);
       const iw = img.naturalWidth || size;
       const ih = img.naturalHeight || size;
       const scale = Math.min(size / iw, size / ih);
@@ -396,6 +459,8 @@ async function fetchIconAsPngDataUrl(url, size = 16) {
       const h = ih * scale;
       const x = (size - w) / 2;
       const y = (size - h) / 2;
+
+      ctx.clearRect(0, 0, size, size);
       ctx.drawImage(img, x, y, w, h);
 
       try {
@@ -407,26 +472,40 @@ async function fetchIconAsPngDataUrl(url, size = 16) {
     img.onerror = reject;
     img.src = svgDataUrl;
   });
-
-  return pngDataUrl;
 }
 
 async function getIconDataUrlForExt(ext) {
   if (!ext) return null;
+
+  // Cache by extension
   if (ICON_CACHE.has(ext)) return ICON_CACHE.get(ext);
 
-  const key = EXT_TO_ICONKEY[ext];
-  if (!key) return null;
+  const primaryKey = EXT_TO_ICONKEY[ext];
+  if (!primaryKey) return null;
 
-  const url = iconUrlForKey(key);
-  const dataUrl = await fetchIconAsPngDataUrl(url, 32);
+  // Try primary key + fallbacks + ext-as-key (some repos use that)
+  const tryKeys = [
+    primaryKey,
+    ...(KEY_FALLBACKS[primaryKey] || []),
+    ext,
+  ].filter(Boolean);
 
-  ICON_CACHE.set(ext, dataUrl);
-  safeCacheSave();
-  return dataUrl;
+  for (const k of tryKeys) {
+    try {
+      const url = iconUrlForKey(k);
+      const dataUrl = await fetchIconAsPngDataUrl(url, 32);
+      ICON_CACHE.set(ext, dataUrl);
+      safeCacheSave();
+      return dataUrl;
+    } catch {
+      // try next
+    }
+  }
+
+  return null;
 }
 
-function rerenderIfLoaded() {
+async function rerenderIfLoaded() {
   if (!currentRoot) return;
 
   // Preserve open state
@@ -438,24 +517,30 @@ function rerenderIfLoaded() {
 
   renderTree(currentRoot);
 
-  // restore open state (best-effort)
-  for (const id of openNodeIds) {
-    const el = findNodeElementById(id);
-    if (el) setNodeOpenState(el, true);
-  }
+  // Properly restore: open + render children
+  await restoreOpenState(openNodeIds);
 }
 
-// init
+// init advanced icons
 (function initAdvancedIcons() {
   safeCacheLoad();
+
+  if (!window.EXT_TO_ICONKEY) {
+    // not fatal, but helpful
+    console.warn(
+      "EXT_TO_ICONKEY not found. Make sure icons-map.js is loaded before app.js",
+    );
+  }
+
   const saved = localStorage.getItem("sv_adv_icons") === "1";
   advancedIconsEnabled = saved;
+
   if (advancedIconsToggle) {
     advancedIconsToggle.checked = saved;
-    advancedIconsToggle.addEventListener("change", () => {
+    advancedIconsToggle.addEventListener("change", async () => {
       advancedIconsEnabled = advancedIconsToggle.checked;
       localStorage.setItem("sv_adv_icons", advancedIconsEnabled ? "1" : "0");
-      rerenderIfLoaded();
+      await rerenderIfLoaded();
     });
   }
 })();
@@ -473,6 +558,7 @@ async function buildFolderRoot(dirHandle) {
     hasChildren: true,
     loaded: false,
     fsHandle: dirHandle,
+    source: "fs",
   };
 }
 
@@ -482,7 +568,6 @@ async function loadFolderChildren(node) {
   const dirs = [];
   const files = [];
 
-  // Note: order by kind then name
   for await (const [name, handle] of node.fsHandle.entries()) {
     if (handle.kind === "directory") {
       dirs.push({
@@ -490,9 +575,10 @@ async function loadFolderChildren(node) {
         label: name,
         type: "folder",
         children: [],
-        hasChildren: true, // unknown until we peek; keep true so it can be opened
+        hasChildren: true,
         loaded: false,
         fsHandle: handle,
+        source: "fs",
       });
     } else {
       files.push({
@@ -503,6 +589,7 @@ async function loadFolderChildren(node) {
         hasChildren: false,
         loaded: true,
         fsHandle: handle,
+        source: "fs",
       });
     }
   }
@@ -511,12 +598,10 @@ async function loadFolderChildren(node) {
   files.sort((a, b) => a.label.localeCompare(b.label));
   node.children = [...dirs, ...files];
 
-  // Optional: for folders, we can peek if empty to hide twisty (costly on big trees if done everywhere)
-  // We'll do a lightweight peek just for immediate children (fine).
+  // Lightweight peek for empty folders (immediate children only)
   await Promise.all(
     dirs.map(async (d) => {
       try {
-        // peek one entry
         for await (const _ of d.fsHandle.entries()) {
           d.hasChildren = true;
           return;
@@ -545,7 +630,128 @@ async function pickFolder() {
 }
 
 // ------------------------
-// JSON mode (FIXED)
+// GitHub mode (Public repos)
+// ------------------------
+
+async function loadGitHubRepo() {
+  const repoFull = (ghRepo?.value || "").trim();
+  if (!repoFull.includes("/")) {
+    alert("Use: owner/repo");
+    return;
+  }
+  const [owner, repo] = repoFull.split("/", 2);
+  const branch = (ghBranch?.value || "").trim();
+
+  currentMode = "github";
+  elMeta.textContent = `GitHub: ${owner}/${repo}${branch ? "@" + branch : ""} • loading...`;
+  setControlsEnabled(false);
+
+  // repo info -> default branch
+  const repoInfoRes = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}`,
+  );
+  if (!repoInfoRes.ok) throw new Error("Repo not found / rate limited.");
+  const repoInfo = await repoInfoRes.json();
+  const useBranch = branch || repoInfo.default_branch;
+
+  // branch -> sha
+  const refRes = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(useBranch)}`,
+  );
+  if (!refRes.ok) throw new Error("Branch not found.");
+  const ref = await refRes.json();
+  const sha = ref.object.sha;
+
+  // tree recursive
+  const treeRes = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`,
+  );
+  if (!treeRes.ok) throw new Error("Tree fetch failed (rate limited?)");
+  const treeJson = await treeRes.json();
+
+  currentRoot = buildTreeFromGitHubPaths(
+    `${owner}/${repo}@${useBranch}`,
+    treeJson.tree || [],
+  );
+
+  elMeta.textContent = `GitHub: ${owner}/${repo}@${useBranch} • loaded: ${humanNow()}`;
+  setControlsEnabled(true);
+  renderTree(currentRoot);
+}
+
+function buildTreeFromGitHubPaths(rootLabel, entries) {
+  const root = {
+    id: makeId(),
+    label: rootLabel,
+    type: "folder",
+    children: [],
+    hasChildren: true,
+    loaded: true, // IMPORTANT: github is fully materialized
+    source: "github",
+  };
+
+  const dirMap = new Map(); // path -> node
+  dirMap.set("", root);
+
+  function getOrCreateDir(path) {
+    if (dirMap.has(path)) return dirMap.get(path);
+    const parts = path.split("/");
+    const name = parts[parts.length - 1];
+    const parentPath = parts.slice(0, -1).join("/");
+    const parent = getOrCreateDir(parentPath);
+
+    const node = {
+      id: makeId(),
+      label: name,
+      type: "folder",
+      children: [],
+      hasChildren: true,
+      loaded: true, // IMPORTANT: github is fully materialized
+      source: "github",
+    };
+
+    parent.children.push(node);
+    dirMap.set(path, node);
+    return node;
+  }
+
+  for (const e of entries) {
+    if (!e.path) continue;
+
+    const parts = e.path.split("/");
+    const parentPath = parts.slice(0, -1).join("/");
+    const parent = getOrCreateDir(parentPath);
+
+    if (e.type === "tree") {
+      getOrCreateDir(e.path);
+    } else {
+      parent.children.push({
+        id: makeId(),
+        label: parts[parts.length - 1],
+        type: "file",
+        children: [],
+        hasChildren: false,
+        loaded: true,
+        source: "github",
+      });
+    }
+  }
+
+  function sortNode(node) {
+    node.children.sort((a, b) => {
+      if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+      return a.label.localeCompare(b.label);
+    });
+    for (const c of node.children) sortNode(c);
+    node.hasChildren = node.children.length > 0;
+  }
+
+  sortNode(root);
+  return root;
+}
+
+// ------------------------
+// JSON mode
 // ------------------------
 
 function isPlainObject(v) {
@@ -560,9 +766,9 @@ function buildJsonTreeFromValue(label, value) {
     children: [],
     hasChildren: false,
     loaded: true,
+    source: "json",
   };
 
-  // Array
   if (Array.isArray(value)) {
     node.hasChildren = value.length > 0;
 
@@ -594,22 +800,16 @@ function buildJsonTreeFromValue(label, value) {
     return node;
   }
 
-  // Object
   if (isPlainObject(value)) {
     const keys = Object.keys(value);
     node.hasChildren = keys.length > 0;
 
-    // Keep stable ordering (optional)
     keys.sort((a, b) => a.localeCompare(b));
-
-    for (const k of keys) {
+    for (const k of keys)
       node.children.push(buildJsonTreeFromValue(k, value[k]));
-    }
-
     return node;
   }
 
-  // Primitive / null
   node.label = `${label}: ${value === null ? "null" : String(value)}`;
   node.hasChildren = false;
   node.children = [];
@@ -622,14 +822,6 @@ async function loadJsonFile(file) {
 
   try {
     parsed = JSON.parse(text);
-    console.log(
-      "JSON parsed:",
-      parsed,
-      "type:",
-      typeof parsed,
-      "isArray:",
-      Array.isArray(parsed),
-    );
   } catch (e) {
     alert("Invalid JSON: " + (e?.message || e));
     return;
@@ -637,11 +829,7 @@ async function loadJsonFile(file) {
 
   currentMode = "json";
   const baseName = file.name.replace(/\.json$/i, "");
-
-  // Build
   currentRoot = buildJsonTreeFromValue(baseName, parsed);
-
-  // Safety: if root has children, force it expandable
   currentRoot.hasChildren = currentRoot.children.length > 0;
 
   elMeta.textContent = `JSON: ${file.name} • loaded: ${humanNow()}`;
@@ -658,8 +846,6 @@ function collapseAll() {
 }
 
 async function expandAll() {
-  // Expand nodes in DOM order; for folder nodes, trigger lazy loads.
-  // This can be heavy on big folders.
   const queue = [currentRoot];
   while (queue.length) {
     const node = queue.shift();
@@ -667,10 +853,17 @@ async function expandAll() {
     if (nodeEl) setNodeOpenState(nodeEl, true);
 
     if (node.type === "folder" && node.hasChildren && !node.loaded) {
+      // local FS only (github folders are loaded=true)
       await loadFolderChildren(node);
       node.loaded = true;
       const childrenWrap = nodeEl?.querySelector(":scope > .children");
       if (childrenWrap) renderChildren(node, childrenWrap);
+    } else if ((node.type === "folder" || node.type === "json") && nodeEl) {
+      // ensure children rendered so deeper nodes exist
+      const childrenWrap = nodeEl.querySelector(":scope > .children");
+      if (childrenWrap && childrenWrap.childElementCount === 0) {
+        renderChildren(node, childrenWrap);
+      }
     }
 
     for (const ch of node.children) queue.push(ch);
@@ -678,74 +871,10 @@ async function expandAll() {
 }
 
 // ------------------------
-// PNG export
+// PNG export helpers
 // ------------------------
 
-async function ensureIconsReadyForExport({ full }) {
-  if (!advancedIconsEnabled) return;
-
-  // If exporting full, we expand everything first in exportPng()
-  // but icons may still need to load. We'll wait on the DOM after expansion.
-
-  // Give async icon loaders a micro head start
-  await new Promise((r) => setTimeout(r, 30));
-
-  const icons = Array.from(elTree.querySelectorAll(".icon[data-icon-ready]"));
-  if (icons.length === 0) return;
-
-  // wait up to 2 seconds; after that export anyway
-  const deadline = Date.now() + 2000;
-
-  while (Date.now() < deadline) {
-    const pending = icons.some((el) => el.dataset.iconReady !== "1");
-    if (!pending) return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-}
-
-async function replaceIconImgsWithCanvases(root, size = 16) {
-  const imgs = Array.from(root.querySelectorAll(".icon img"));
-
-  // Wait for images to be ready
-  await Promise.all(
-    imgs.map(
-      (im) =>
-        new Promise((resolve) => {
-          if (im.complete && im.naturalWidth > 0) return resolve();
-          im.onload = () => resolve();
-          im.onerror = () => resolve();
-        }),
-    ),
-  );
-
-  for (const im of imgs) {
-    const c = document.createElement("canvas");
-    c.width = size;
-    c.height = size;
-
-    const ctx = c.getContext("2d");
-    try {
-      ctx.clearRect(0, 0, size, size);
-      ctx.drawImage(im, 0, 0, size, size);
-    } catch {
-      // if drawImage fails, keep the <img>
-      continue;
-    }
-
-    // Keep layout identical
-    c.style.width = size + "px";
-    c.style.height = size + "px";
-    c.style.display = "block";
-
-    im.replaceWith(c);
-  }
-}
-
-// ------------------------
-// PNG export (fit width to content, no “thin line” bug)
-// ------------------------
-
-async function ensureIconsReadyForExport({ full }) {
+async function ensureIconsReadyForExport() {
   if (!advancedIconsEnabled) return;
 
   await new Promise((r) => setTimeout(r, 30));
@@ -776,7 +905,6 @@ async function replaceIconImgsWithCanvases(root, size = 16) {
   );
 
   for (const im of imgs) {
-    // If it isn't loaded properly, skip
     if (!(im.naturalWidth > 0 && im.naturalHeight > 0)) continue;
 
     const c = document.createElement("canvas");
@@ -785,9 +913,6 @@ async function replaceIconImgsWithCanvases(root, size = 16) {
 
     const ctx = c.getContext("2d");
     try {
-      ctx.clearRect(0, 0, size, size);
-
-      // draw fitted (prevents weird SVG intrinsic sizes)
       const iw = im.naturalWidth;
       const ih = im.naturalHeight;
       const scale = Math.min(size / iw, size / ih);
@@ -795,6 +920,8 @@ async function replaceIconImgsWithCanvases(root, size = 16) {
       const h = ih * scale;
       const x = (size - w) / 2;
       const y = (size - h) / 2;
+
+      ctx.clearRect(0, 0, size, size);
       ctx.drawImage(im, x, y, w, h);
     } catch {
       continue;
@@ -808,6 +935,10 @@ async function replaceIconImgsWithCanvases(root, size = 16) {
     im.replaceWith(c);
   }
 }
+
+// ------------------------
+// PNG export (fit width to content, no “thin line” bug)
+// ------------------------
 
 async function exportPng({ full }) {
   if (!currentRoot) return;
@@ -842,9 +973,8 @@ async function exportPng({ full }) {
     }
 
     // wait for icons in LIVE DOM so clone will have final <img src="data:...">
-    await ensureIconsReadyForExport({ full });
+    await ensureIconsReadyForExport();
 
-    // Theme for export
     const effectiveTheme = getEffectiveTheme();
     const tv = themeVars(effectiveTheme);
 
@@ -852,16 +982,16 @@ async function exportPng({ full }) {
     const pad = 12;
     const MAX_W = 6000;
 
-    // Off-screen host (NOT -100000px: it breaks measurement in some browsers)
+    // Off-screen host (measurable)
     const cloneHost = document.createElement("div");
     cloneHost.style.position = "fixed";
     cloneHost.style.left = "0";
     cloneHost.style.top = "0";
-    cloneHost.style.transform = "translateX(-200%)"; // off-screen but measurable
+    cloneHost.style.transform = "translateX(-200%)";
     cloneHost.style.padding = pad + "px";
     cloneHost.style.fontFamily = getComputedStyle(document.body).fontFamily;
 
-    // important for “fit to content”
+    // fit-to-content
     cloneHost.style.display = "inline-block";
     cloneHost.style.width = "auto";
     cloneHost.style.maxWidth = "none";
@@ -871,11 +1001,10 @@ async function exportPng({ full }) {
     cloneHost.style.background = useBg ? tv.bg : "transparent";
     cloneHost.style.color = tv.text;
 
-    // Clone tree
     const clone = elTree.cloneNode(true);
     cloneHost.appendChild(clone);
 
-    // Force icon box sizing inside clone (prevents baseline weirdness)
+    // icon box sizing inside clone
     cloneHost.querySelectorAll(".icon").forEach((el) => {
       el.style.width = "16px";
       el.style.height = "16px";
@@ -886,7 +1015,7 @@ async function exportPng({ full }) {
       el.style.overflow = "hidden";
     });
 
-    // Clamp any <img> size in the clone
+    // clamp <img> sizes inside clone
     cloneHost.querySelectorAll(".icon img").forEach((im) => {
       im.style.width = "16px";
       im.style.height = "16px";
@@ -897,19 +1026,17 @@ async function exportPng({ full }) {
 
     document.body.appendChild(cloneHost);
 
-    // let layout settle
     await new Promise((r) => requestAnimationFrame(() => r()));
 
-    // Convert icon <img> -> <canvas> (most robust for html2canvas)
+    // convert icons <img> -> <canvas> for html2canvas reliability
     await replaceIconImgsWithCanvases(cloneHost, 16);
 
     await new Promise((r) => requestAnimationFrame(() => r()));
 
-    // Measure true content width via bounding box (no scrollWidth bugs)
+    // measure width via bounding box (no scrollWidth gotchas)
     const treeBox = clone.getBoundingClientRect();
     let contentW = Math.ceil(treeBox.width);
     if (!contentW || contentW < 50) {
-      // fallback if something goes weird
       contentW = Math.ceil(cloneHost.getBoundingClientRect().width) || 800;
     }
 
@@ -918,7 +1045,6 @@ async function exportPng({ full }) {
 
     await new Promise((r) => requestAnimationFrame(() => r()));
 
-    // Use explicit dimensions for html2canvas to avoid cropping
     const rect = cloneHost.getBoundingClientRect();
     const canvas = await html2canvas(cloneHost, {
       backgroundColor: useBg ? tv.bg : null,
@@ -955,13 +1081,10 @@ async function exportPng({ full }) {
       a.remove();
     }
 
-    // restore view state if expanded
     if (full) {
       collapseAll();
-      for (const id of openNodeIds) {
-        const nodeEl = findNodeElementById(id);
-        if (nodeEl) setNodeOpenState(nodeEl, true);
-      }
+      // best-effort restore open state visually
+      await restoreOpenState(openNodeIds);
     }
   } catch (err) {
     console.error(err);
@@ -979,7 +1102,10 @@ async function exportPng({ full }) {
   }
 }
 
+// ------------------------
 // Theme init
+// ------------------------
+
 (function initTheme() {
   const saved = localStorage.getItem("sv_theme") || "system";
   if (themeSelect) themeSelect.value = saved;
@@ -989,7 +1115,6 @@ async function exportPng({ full }) {
     applyTheme(e.target.value);
   });
 
-  // If system theme changes while on "system", update automatically
   if (window.matchMedia) {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     mq.addEventListener?.("change", () => {
@@ -1003,24 +1128,33 @@ async function exportPng({ full }) {
 // Events
 // ------------------------
 
-btnPickFolder.addEventListener("click", async () => {
+btnPickFolder?.addEventListener("click", async () => {
   try {
     await pickFolder();
   } catch (e) {
-    // user cancelled or permissions
     console.warn(e);
   }
 });
 
-jsonInput.addEventListener("change", async (e) => {
+btnLoadGitHub?.addEventListener("click", () => {
+  loadGitHubRepo().catch((e) => {
+    console.error(e);
+    alert(e?.message || e);
+    elMeta.textContent = "Failed to load GitHub repo.";
+    setControlsEnabled(false);
+  });
+});
+
+jsonInput?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
   await loadJsonFile(file);
   jsonInput.value = "";
 });
 
-btnCollapseAll.addEventListener("click", () => collapseAll());
-btnExpandAll.addEventListener("click", async () => {
+btnCollapseAll?.addEventListener("click", () => collapseAll());
+
+btnExpandAll?.addEventListener("click", async () => {
   btnExpandAll.disabled = true;
   try {
     await expandAll();
@@ -1029,8 +1163,10 @@ btnExpandAll.addEventListener("click", async () => {
   }
 });
 
-btnExportView.addEventListener("click", async () => exportPng({ full: false }));
-btnExportFull.addEventListener("click", async () => exportPng({ full: true }));
+btnExportView?.addEventListener("click", async () =>
+  exportPng({ full: false }),
+);
+btnExportFull?.addEventListener("click", async () => exportPng({ full: true }));
 
 // start clean
 clearTree();
