@@ -20,6 +20,16 @@ Runs entirely in the browser. No uploads. No servers.
 
 ---
 
+### 🗜️ ZIP Archive Viewer
+
+- Load and explore `.zip` files without extracting them
+- Displays the complete folder structure instantly
+- View nested directories and all contained files
+- Works in all modern browsers
+- Perfect for inspecting archives before extraction
+
+---
+
 ### 🧾 JSON Tree Viewer
 
 - Load any `.json` file locally

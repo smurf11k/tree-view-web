@@ -351,6 +351,21 @@ select {
   overflow: hidden;
   min-height: 72vh;
   box-shadow: var(--shadowSoft);
+  display: flex;
+  flex-direction: column;
+}
+
+/* when locked, treeWrap scrolls and matches notes height */
+.panel[data-fixed="true"] .treeWrap {
+  max-height: calc(72vh - 52px); /* Adjust based on header height */
+  flex: unset; /* Override flex when fixed */
+  overflow-y: auto;
+}
+
+/* when unlocked, panel expands naturally */
+.panel[data-fixed="false"] .treeWrap {
+  max-height: none;
+  overflow: visible;
 }
 
 .panel.side {
@@ -387,8 +402,9 @@ select {
    ========================= */
 
 .treeWrap {
-  padding: 12px 12px 18px;
+  flex: 1;
   overflow: auto;
+  padding: 12px;
   max-height: calc(72vh - 52px);
 }
 
@@ -425,18 +441,6 @@ select {
   visibility: hidden;
   cursor: default;
 }
-/*
-.icon {
-  width: 16px;
-  text-align: center;
-  user-select: none;
-}
-
-.icon img {
-  width: 16px;
-  height: 16px;
-  display: inline-block;
-}*/
 
 .icon {
   width: 16px;
@@ -470,6 +474,25 @@ select {
 
 .open > .children {
   display: block;
+}
+
+/* Scrollbars */
+.treeWrap {
+  scrollbar-color: var(--border) transparent;
+}
+
+.treeWrap::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.treeWrap::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 10px;
+}
+
+.treeWrap::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* =========================

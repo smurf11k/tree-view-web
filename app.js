@@ -1,43 +1,103 @@
 // Structure Viewer
 // - Folder tree via File System Access API (showDirectoryPicker), lazy loads subfolders.
 // - JSON tree via file input.
+// - ZIP tree via JSZip.
 // - GitHub public repo tree via GitHub API (single recursive tree call).
 // - Export PNG via html2canvas (view or full), including advanced icons.
+
+// ------------------------
+// Constants
+// ------------------------
+
+const CONFIG = {
+  ICON_SIZE: 16,
+  ICON_CACHE_MAX: 200,
+  ICON_CACHE_KEY: "sv_icon_cache_v1",
+  THEME_KEY: "sv_theme",
+  ADVANCED_ICONS_KEY: "sv_adv_icons",
+  EXPORT_MAX_WIDTH: 6000,
+  EXPORT_PADDING: 12,
+  ICON_LOAD_TIMEOUT: 2500,
+  ICON_CANVAS_SIZE: 32,
+};
+
+const EMOJI = {
+  LOADING: "⏳",
+  ERROR: "!",
+  WARNING: "⚠️",
+  FOLDER: "📁",
+  FILE: "📄",
+  JSON: "🔹",
+};
+
+const TWISTY = {
+  COLLAPSED: "▶",
+  EXPANDED: "▼",
+  LEAF: "•",
+};
+
+const PRIORITY_FIELDS = ["name", "username", "title", "id"];
+
+const VSCODE_ICONS_BASE =
+  "https://raw.githubusercontent.com/vscode-icons/vscode-icons/master/icons/";
+
+const KEY_FALLBACKS = {
+  javascript: ["js", "nodejs", "node"],
+  typescript: ["ts"],
+  reactjs: ["react"],
+  reactts: ["react"],
+  markdown: ["md"],
+  csharp: ["cs"],
+  yaml: ["yml"],
+  shell: ["sh"],
+  powershell: ["ps"],
+  powerpoint: ["ppt"],
+  excel: ["xls"],
+  word: ["doc"],
+};
+
+const COMPOUND_EXTENSIONS = ["csproj.user", "vbproj.user", "tar.gz", "tar.bz2"];
+
+// ------------------------
+// DOM Elements
+// ------------------------
 
 const elTree = document.getElementById("tree");
 const elMeta = document.getElementById("meta");
 
 const btnPickFolder = document.getElementById("btnPickFolder");
 const jsonInput = document.getElementById("jsonInput");
+const zipInput = document.getElementById("zipInput");
 
 const btnCollapseAll = document.getElementById("btnCollapseAll");
 const btnExpandAll = document.getElementById("btnExpandAll");
 const btnExportView = document.getElementById("btnExportView");
 const btnExportFull = document.getElementById("btnExportFull");
 
-// GitHub UI (optional)
 const btnLoadGitHub = document.getElementById("btnLoadGitHub");
 const ghRepo = document.getElementById("ghRepo");
 const ghBranch = document.getElementById("ghBranch");
 
+const themeSelect = document.getElementById("themeSelect");
+const exportUseThemeBg = document.getElementById("exportUseThemeBg");
+const advancedIconsToggle = document.getElementById("advancedIcons");
+
+// ------------------------
+// State
+// ------------------------
+
 let currentRoot = null; // generic node model
-let currentMode = null; // "folder" | "json" | "github"
+let currentMode = null; // "folder" | "json" | "github" | "zip"
+let advancedIconsEnabled = false;
+let nodeIdCounter = 0;
 
-const PRIORITY_FIELDS = ["name", "username", "title", "id"];
+// ------------------------
+// Utility Functions
+// ------------------------
 
-function setControlsEnabled(enabled) {
-  btnCollapseAll.disabled = !enabled;
-  btnExpandAll.disabled = !enabled;
-  btnExportView.disabled = !enabled;
-  btnExportFull.disabled = !enabled;
-}
-
-function clearTree() {
-  elTree.innerHTML = "";
-  currentRoot = null;
-  currentMode = null;
-  setControlsEnabled(false);
-  elMeta.textContent = "No data loaded.";
+function makeId() {
+  nodeIdCounter += 1;
+  return `n_${nodeIdCounter}`;
 }
 
 function humanNow() {
@@ -56,41 +116,303 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-// ------------------------
-// Node model + rendering
-// ------------------------
+function getFileExtension(name) {
+  const base = name.split("/").pop();
 
-/**
- * Generic node:
- * {
- *   id: string,
- *   label: string,
- *   type: "folder"|"file"|"json",
- *   children: Node[],
- *   hasChildren: boolean,
- *   loaded: boolean, // for folders lazy loading (local FS only)
- *   fsHandle?: FileSystemHandle, // local FS
- *   source?: "fs"|"github"|"json" // optional
- * }
- */
-
-let nodeIdCounter = 0;
-function makeId() {
-  nodeIdCounter += 1;
-  return `n_${nodeIdCounter}`;
-}
-
-function iconFor(node) {
-  if (node.type === "folder") return { kind: "emoji", value: "📁" };
-  if (node.type === "json") return { kind: "emoji", value: "🔹" };
-
-  if (node.type === "file") {
-    if (!advancedIconsEnabled) return { kind: "emoji", value: "📄" };
-    return { kind: "lazy-web-icon", value: node.label }; // file name
+  // Check for compound extensions first (e.g., .csproj.user, .tar.gz)
+  for (const ext of COMPOUND_EXTENSIONS) {
+    if (base.toLowerCase().endsWith("." + ext)) {
+      return ext;
+    }
   }
 
-  return { kind: "emoji", value: "🔹" };
+  // Standard single extension
+  const i = base.lastIndexOf(".");
+  if (i <= 0 || i === base.length - 1) return "";
+  return base.slice(i + 1).toLowerCase();
 }
+
+function isPlainObject(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+function handleError(error, context, userMessage) {
+  console.error(`[${context}]`, error);
+  if (userMessage) {
+    alert(userMessage + "\n\n" + (error?.message || error));
+  }
+}
+
+// ------------------------
+// Icon Manager Class
+// ------------------------
+
+class IconManager {
+  constructor() {
+    this.cache = new Map();
+    this.loadCacheFromStorage();
+  }
+
+  loadCacheFromStorage() {
+    try {
+      const raw = localStorage.getItem(CONFIG.ICON_CACHE_KEY);
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return;
+      for (const [k, v] of arr) this.cache.set(k, v);
+    } catch {}
+  }
+
+  saveCacheToStorage() {
+    try {
+      const arr = Array.from(this.cache.entries()).slice(
+        -CONFIG.ICON_CACHE_MAX,
+      );
+      localStorage.setItem(CONFIG.ICON_CACHE_KEY, JSON.stringify(arr));
+    } catch {}
+  }
+
+  async getIconDataUrl(ext) {
+    if (!ext) return null;
+    if (this.cache.has(ext)) return this.cache.get(ext);
+
+    const EXT_TO_ICONKEY = window.EXT_TO_ICONKEY || {};
+    const primaryKey = EXT_TO_ICONKEY[ext];
+    if (!primaryKey) return null;
+
+    const tryKeys = [
+      primaryKey,
+      ...(KEY_FALLBACKS[primaryKey] || []),
+      ext,
+    ].filter(Boolean);
+
+    for (const k of tryKeys) {
+      try {
+        const url = this.getIconUrl(k);
+        const dataUrl = await this.fetchIconAsPngDataUrl(url);
+        this.cache.set(ext, dataUrl);
+        this.saveCacheToStorage();
+        return dataUrl;
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  getIconUrl(key) {
+    return `${VSCODE_ICONS_BASE}file_type_${key}.svg`;
+  }
+
+  async fetchIconAsPngDataUrl(url, size = CONFIG.ICON_CANVAS_SIZE) {
+    const res = await fetch(url, { mode: "cors" });
+    if (!res.ok) throw new Error(`Icon fetch failed: ${res.status}`);
+    const svgText = await res.text();
+
+    const normalizedSvg = svgText.includes('xmlns="http://www.w3.org/2000/svg"')
+      ? svgText
+      : svgText.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
+
+    const svgDataUrl =
+      "data:image/svg+xml;charset=utf-8," + encodeURIComponent(normalizedSvg);
+
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.crossOrigin = "anonymous";
+
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+
+        const iw = img.naturalWidth || size;
+        const ih = img.naturalHeight || size;
+        const scale = Math.min(size / iw, size / ih);
+        const w = iw * scale;
+        const h = ih * scale;
+        const x = (size - w) / 2;
+        const y = (size - h) / 2;
+
+        ctx.clearRect(0, 0, size, size);
+        ctx.drawImage(img, x, y, w, h);
+
+        try {
+          resolve(canvas.toDataURL("image/png"));
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.onerror = reject;
+      img.src = svgDataUrl;
+    });
+  }
+}
+
+const iconManager = new IconManager();
+
+// ------------------------
+// Node Factory
+// ------------------------
+
+const NodeFactory = {
+  createFolder(label, options = {}) {
+    return {
+      id: makeId(),
+      label,
+      type: "folder",
+      children: [],
+      hasChildren: true,
+      loaded: false,
+      ...options,
+    };
+  },
+
+  createFile(label, options = {}) {
+    return {
+      id: makeId(),
+      label,
+      type: "file",
+      children: [],
+      hasChildren: false,
+      loaded: true,
+      ...options,
+    };
+  },
+
+  createJson(label, options = {}) {
+    return {
+      id: makeId(),
+      label,
+      type: "json",
+      children: [],
+      hasChildren: false,
+      loaded: true,
+      source: "json",
+      ...options,
+    };
+  },
+};
+
+// ------------------------
+// UI Control Functions
+// ------------------------
+
+function setControlsEnabled(enabled) {
+  btnCollapseAll.disabled = !enabled;
+  btnExpandAll.disabled = !enabled;
+  btnExportView.disabled = !enabled;
+  btnExportFull.disabled = !enabled;
+}
+
+function clearTree() {
+  elTree.innerHTML = "";
+  currentRoot = null;
+  currentMode = null;
+  setControlsEnabled(false);
+  elMeta.textContent = "No data loaded.";
+}
+
+// ------------------------
+// Icon Creation
+// ------------------------
+
+function iconFor(node) {
+  if (node.type === "folder") return { kind: "emoji", value: EMOJI.FOLDER };
+  if (node.type === "json") return { kind: "emoji", value: EMOJI.JSON };
+
+  if (node.type === "file") {
+    if (!advancedIconsEnabled) return { kind: "emoji", value: EMOJI.FILE };
+    return { kind: "lazy-web-icon", value: node.label };
+  }
+
+  return { kind: "emoji", value: EMOJI.JSON };
+}
+
+function createPlaceholderImage() {
+  const img = document.createElement("img");
+  img.alt = "";
+  img.width = CONFIG.ICON_SIZE;
+  img.height = CONFIG.ICON_SIZE;
+  img.decoding = "async";
+  img.loading = "lazy";
+  img.style.verticalAlign = "middle";
+  img.style.display = "inline-block";
+  return img;
+}
+
+async function loadIconForElement(icon, img, ext) {
+  try {
+    const dataUrl = await iconManager.getIconDataUrl(ext);
+
+    if (!dataUrl) {
+      icon.textContent = EMOJI.FILE;
+      icon.dataset.iconReady = "1";
+      return;
+    }
+
+    const targetImg = icon.querySelector("img") || img;
+    targetImg.onload = () => (icon.dataset.iconReady = "1");
+    targetImg.onerror = () => {
+      icon.textContent = EMOJI.FILE;
+      icon.dataset.iconReady = "1";
+    };
+    targetImg.src = dataUrl;
+
+    if (targetImg.complete && targetImg.naturalWidth > 0) {
+      icon.dataset.iconReady = "1";
+    }
+  } catch {
+    icon.textContent = EMOJI.FILE;
+    icon.dataset.iconReady = "1";
+  }
+}
+
+function createLazyIconElement(fileName) {
+  const icon = document.createElement("span");
+  icon.className = "icon";
+  icon.textContent = "";
+
+  const ext = getFileExtension(fileName);
+  icon.dataset.ext = ext || "";
+  icon.dataset.iconReady = "0";
+
+  const img = createPlaceholderImage();
+  icon.appendChild(img);
+
+  if (!ext) {
+    icon.textContent = EMOJI.FILE;
+    icon.dataset.iconReady = "1";
+    return icon;
+  }
+
+  loadIconForElement(icon, img, ext);
+  return icon;
+}
+
+function createIconElement(node) {
+  const icon = document.createElement("span");
+  icon.className = "icon";
+
+  const ico = iconFor(node);
+
+  if (ico.kind === "emoji") {
+    icon.textContent = ico.value;
+    return icon;
+  }
+
+  if (ico.kind === "lazy-web-icon") {
+    return createLazyIconElement(ico.value);
+  }
+
+  return icon;
+}
+
+// ------------------------
+// Node Rendering
+// ------------------------
 
 function createNodeElement(node) {
   const container = document.createElement("div");
@@ -102,65 +424,10 @@ function createNodeElement(node) {
 
   const twisty = document.createElement("span");
   twisty.className = "twisty";
-  twisty.textContent = node.hasChildren ? "▶" : "•";
+  twisty.textContent = node.hasChildren ? TWISTY.COLLAPSED : TWISTY.LEAF;
   if (!node.hasChildren) twisty.classList.add("hidden");
 
-  const icon = document.createElement("span");
-  icon.className = "icon";
-
-  const ico = iconFor(node);
-
-  if (ico.kind === "emoji") {
-    icon.textContent = ico.value;
-  } else if (ico.kind === "lazy-web-icon") {
-    icon.textContent = "";
-
-    const ext = getFileExtension(ico.value);
-    icon.dataset.ext = ext || "";
-    icon.dataset.iconReady = "0";
-
-    // placeholder image (keeps layout stable)
-    const img = document.createElement("img");
-    img.alt = "";
-    img.width = 16;
-    img.height = 16;
-    img.decoding = "async";
-    img.loading = "lazy";
-    img.style.verticalAlign = "middle";
-    img.style.display = "inline-block";
-    icon.appendChild(img);
-
-    if (!ext) {
-      icon.textContent = "📄";
-      icon.dataset.iconReady = "1";
-    } else {
-      getIconDataUrlForExt(ext)
-        .then((dataUrl) => {
-          if (!dataUrl) {
-            icon.textContent = "📄";
-            icon.dataset.iconReady = "1";
-            return;
-          }
-
-          const targetImg = icon.querySelector("img") || img;
-          targetImg.onload = () => (icon.dataset.iconReady = "1");
-          targetImg.onerror = () => {
-            icon.textContent = "📄";
-            icon.dataset.iconReady = "1";
-          };
-          targetImg.src = dataUrl;
-
-          // If already cached, onload might not fire reliably
-          if (targetImg.complete && targetImg.naturalWidth > 0) {
-            icon.dataset.iconReady = "1";
-          }
-        })
-        .catch(() => {
-          icon.textContent = "📄";
-          icon.dataset.iconReady = "1";
-        });
-    }
-  }
+  const icon = createIconElement(node);
 
   const label = document.createElement("span");
   label.className = "label";
@@ -179,52 +446,56 @@ function createNodeElement(node) {
   // Toggle behavior
   if (node.hasChildren) {
     row.addEventListener("click", async () => {
-      // don't toggle if user selects text
-      const sel = window.getSelection?.();
-      if (sel && sel.toString()) return;
-
-      const isOpen = container.classList.contains("open");
-      if (isOpen) {
-        container.classList.remove("open");
-        twisty.textContent = "▶";
-        return;
-      }
-
-      // opening:
-      container.classList.add("open");
-      twisty.textContent = "▼";
-
-      // JSON nodes: always have children ready
-      if (node.type === "json") {
-        renderChildren(node, childrenWrap);
-        return;
-      }
-
-      // Folder nodes:
-      if (node.type === "folder") {
-        // GitHub folders (and any pre-built folder tree) must render immediately
-        if (node.loaded) {
-          renderChildren(node, childrenWrap);
-          return;
-        }
-
-        // local FS folders: lazy load
-        twisty.textContent = "⏳";
-        try {
-          await loadFolderChildren(node);
-          node.loaded = true;
-          renderChildren(node, childrenWrap);
-          twisty.textContent = "▼";
-        } catch (err) {
-          console.error(err);
-          twisty.textContent = "!";
-          childrenWrap.innerHTML = `<div class="node"><span class="twisty hidden">•</span><span class="icon">⚠️</span><span class="label">Failed to read folder (permissions?)</span></div>`;
-        }
-      }
+      await handleNodeToggle(node, container, twisty, childrenWrap);
     });
   }
 
   return container;
+}
+
+async function handleNodeToggle(node, container, twisty, childrenWrap) {
+  // don't toggle if user selects text
+  const sel = window.getSelection?.();
+  if (sel && sel.toString()) return;
+
+  const isOpen = container.classList.contains("open");
+  if (isOpen) {
+    container.classList.remove("open");
+    twisty.textContent = TWISTY.COLLAPSED;
+    return;
+  }
+
+  // opening:
+  container.classList.add("open");
+  twisty.textContent = TWISTY.EXPANDED;
+
+  // JSON nodes: always have children ready
+  if (node.type === "json") {
+    renderChildren(node, childrenWrap);
+    return;
+  }
+
+  // Folder nodes:
+  if (node.type === "folder") {
+    // GitHub/ZIP folders (pre-built tree) must render immediately
+    if (node.loaded) {
+      renderChildren(node, childrenWrap);
+      return;
+    }
+
+    // local FS folders: lazy load
+    twisty.textContent = EMOJI.LOADING;
+    try {
+      await loadFolderChildren(node);
+      node.loaded = true;
+      renderChildren(node, childrenWrap);
+      twisty.textContent = TWISTY.EXPANDED;
+    } catch (err) {
+      console.error(err);
+      twisty.textContent = EMOJI.ERROR;
+      childrenWrap.innerHTML = `<div class="node"><span class="twisty hidden">${TWISTY.LEAF}</span><span class="icon">${EMOJI.WARNING}</span><span class="label">Failed to read folder (permissions?)</span></div>`;
+    }
+  }
 }
 
 function renderTree(root) {
@@ -256,10 +527,12 @@ function setNodeOpenState(nodeEl, open) {
 
   if (open) {
     nodeEl.classList.add("open");
-    if (!twisty.classList.contains("hidden")) twisty.textContent = "▼";
+    if (!twisty.classList.contains("hidden"))
+      twisty.textContent = TWISTY.EXPANDED;
   } else {
     nodeEl.classList.remove("open");
-    if (!twisty.classList.contains("hidden")) twisty.textContent = "▶";
+    if (!twisty.classList.contains("hidden"))
+      twisty.textContent = TWISTY.COLLAPSED;
   }
 }
 
@@ -267,7 +540,6 @@ function collectAllNodeElements() {
   return Array.from(elTree.querySelectorAll("[data-node-id]"));
 }
 
-// Restore open state properly by ALSO rendering children where needed
 async function restoreOpenState(openSet) {
   if (!currentRoot || !openSet || openSet.size === 0) return;
 
@@ -303,12 +575,25 @@ async function restoreOpenState(openSet) {
   }
 }
 
-// ------------------------
-// Theme switch
-// ------------------------
+async function rerenderIfLoaded() {
+  if (!currentRoot) return;
 
-const themeSelect = document.getElementById("themeSelect");
-const exportUseThemeBg = document.getElementById("exportUseThemeBg");
+  // Preserve open state
+  const openNodeIds = new Set(
+    Array.from(elTree.querySelectorAll(".open"))
+      .map((x) => x.getAttribute("data-node-id"))
+      .filter(Boolean),
+  );
+
+  renderTree(currentRoot);
+
+  // Properly restore: open + render children
+  await restoreOpenState(openNodeIds);
+}
+
+// ------------------------
+// Theme Management
+// ------------------------
 
 function applyTheme(mode) {
   // mode: "system" | "dark" | "light"
@@ -317,7 +602,7 @@ function applyTheme(mode) {
   } else {
     document.documentElement.setAttribute("data-theme", mode);
   }
-  localStorage.setItem("sv_theme", mode);
+  localStorage.setItem(CONFIG.THEME_KEY, mode);
 }
 
 function getEffectiveTheme() {
@@ -364,202 +649,14 @@ function setThemeOnElement(el, theme) {
 }
 
 // ------------------------
-// Advanced Icons
-// ------------------------
-
-const advancedIconsToggle = document.getElementById("advancedIcons");
-let advancedIconsEnabled = false;
-
-// Cache: ext -> dataURL
-const ICON_CACHE = new Map();
-
-// Optional persistent cache
-const ICON_CACHE_LS_KEY = "sv_icon_cache_v1";
-const ICON_CACHE_MAX = 200;
-
-// Must be loaded BEFORE app.js in index.html
-const EXT_TO_ICONKEY = window.EXT_TO_ICONKEY || {};
-
-// Some vscode-icons keys differ / move. This adds resilience (incl. your .js case).
-const KEY_FALLBACKS = {
-  javascript: ["js", "nodejs", "node"],
-  typescript: ["ts"],
-  reactjs: ["react"],
-  reactts: ["react"],
-  markdown: ["md"],
-  csharp: ["cs"],
-  yaml: ["yml"],
-  shell: ["sh"],
-  powershell: ["ps"],
-  powerpoint: ["ppt"],
-  excel: ["xls"],
-  word: ["doc"],
-};
-
-// Base URL for vscode-icons
-const VSCODE_ICONS_BASE =
-  "https://raw.githubusercontent.com/vscode-icons/vscode-icons/master/icons/";
-
-function iconUrlForKey(key) {
-  return `${VSCODE_ICONS_BASE}file_type_${key}.svg`;
-}
-
-function getFileExtension(name) {
-  const base = name.split("/").pop();
-  const i = base.lastIndexOf(".");
-  if (i <= 0 || i === base.length - 1) return "";
-  return base.slice(i + 1).toLowerCase();
-}
-
-function safeCacheLoad() {
-  try {
-    const raw = localStorage.getItem(ICON_CACHE_LS_KEY);
-    if (!raw) return;
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return;
-    for (const [k, v] of arr) ICON_CACHE.set(k, v);
-  } catch {}
-}
-
-function safeCacheSave() {
-  try {
-    const arr = Array.from(ICON_CACHE.entries()).slice(-ICON_CACHE_MAX);
-    localStorage.setItem(ICON_CACHE_LS_KEY, JSON.stringify(arr));
-  } catch {}
-}
-
-// Fetch remote SVG and convert to PNG data URL (export-safe)
-async function fetchIconAsPngDataUrl(url, size = 32) {
-  const res = await fetch(url, { mode: "cors" });
-  if (!res.ok) throw new Error(`Icon fetch failed: ${res.status}`);
-  const svgText = await res.text();
-
-  const normalizedSvg = svgText.includes('xmlns="http://www.w3.org/2000/svg"')
-    ? svgText
-    : svgText.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
-
-  const svgDataUrl =
-    "data:image/svg+xml;charset=utf-8," + encodeURIComponent(normalizedSvg);
-
-  const img = new Image();
-  img.decoding = "async";
-  img.crossOrigin = "anonymous";
-
-  return await new Promise((resolve, reject) => {
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d");
-
-      const iw = img.naturalWidth || size;
-      const ih = img.naturalHeight || size;
-      const scale = Math.min(size / iw, size / ih);
-      const w = iw * scale;
-      const h = ih * scale;
-      const x = (size - w) / 2;
-      const y = (size - h) / 2;
-
-      ctx.clearRect(0, 0, size, size);
-      ctx.drawImage(img, x, y, w, h);
-
-      try {
-        resolve(canvas.toDataURL("image/png"));
-      } catch (e) {
-        reject(e);
-      }
-    };
-    img.onerror = reject;
-    img.src = svgDataUrl;
-  });
-}
-
-async function getIconDataUrlForExt(ext) {
-  if (!ext) return null;
-
-  // Cache by extension
-  if (ICON_CACHE.has(ext)) return ICON_CACHE.get(ext);
-
-  const primaryKey = EXT_TO_ICONKEY[ext];
-  if (!primaryKey) return null;
-
-  // Try primary key + fallbacks + ext-as-key (some repos use that)
-  const tryKeys = [
-    primaryKey,
-    ...(KEY_FALLBACKS[primaryKey] || []),
-    ext,
-  ].filter(Boolean);
-
-  for (const k of tryKeys) {
-    try {
-      const url = iconUrlForKey(k);
-      const dataUrl = await fetchIconAsPngDataUrl(url, 32);
-      ICON_CACHE.set(ext, dataUrl);
-      safeCacheSave();
-      return dataUrl;
-    } catch {
-      // try next
-    }
-  }
-
-  return null;
-}
-
-async function rerenderIfLoaded() {
-  if (!currentRoot) return;
-
-  // Preserve open state
-  const openNodeIds = new Set(
-    Array.from(elTree.querySelectorAll(".open"))
-      .map((x) => x.getAttribute("data-node-id"))
-      .filter(Boolean),
-  );
-
-  renderTree(currentRoot);
-
-  // Properly restore: open + render children
-  await restoreOpenState(openNodeIds);
-}
-
-// init advanced icons
-(function initAdvancedIcons() {
-  safeCacheLoad();
-
-  if (!window.EXT_TO_ICONKEY) {
-    // not fatal, but helpful
-    console.warn(
-      "EXT_TO_ICONKEY not found. Make sure icons-map.js is loaded before app.js",
-    );
-  }
-
-  const saved = localStorage.getItem("sv_adv_icons") === "1";
-  advancedIconsEnabled = saved;
-
-  if (advancedIconsToggle) {
-    advancedIconsToggle.checked = saved;
-    advancedIconsToggle.addEventListener("change", async () => {
-      advancedIconsEnabled = advancedIconsToggle.checked;
-      localStorage.setItem("sv_adv_icons", advancedIconsEnabled ? "1" : "0");
-      await rerenderIfLoaded();
-    });
-  }
-})();
-
-// ------------------------
-// Folder mode (File System Access API)
+// Folder Mode (File System Access API)
 // ------------------------
 
 async function buildFolderRoot(dirHandle) {
-  return {
-    id: makeId(),
-    label: dirHandle.name || "(selected folder)",
-    type: "folder",
-    children: [],
-    hasChildren: true,
-    loaded: false,
+  return NodeFactory.createFolder(dirHandle.name || "(selected folder)", {
     fsHandle: dirHandle,
     source: "fs",
-  };
+  });
 }
 
 async function loadFolderChildren(node) {
@@ -570,27 +667,19 @@ async function loadFolderChildren(node) {
 
   for await (const [name, handle] of node.fsHandle.entries()) {
     if (handle.kind === "directory") {
-      dirs.push({
-        id: makeId(),
-        label: name,
-        type: "folder",
-        children: [],
-        hasChildren: true,
-        loaded: false,
-        fsHandle: handle,
-        source: "fs",
-      });
+      dirs.push(
+        NodeFactory.createFolder(name, {
+          fsHandle: handle,
+          source: "fs",
+        }),
+      );
     } else {
-      files.push({
-        id: makeId(),
-        label: name,
-        type: "file",
-        children: [],
-        hasChildren: false,
-        loaded: true,
-        fsHandle: handle,
-        source: "fs",
-      });
+      files.push(
+        NodeFactory.createFile(name, {
+          fsHandle: handle,
+          source: "fs",
+        }),
+      );
     }
   }
 
@@ -630,8 +719,82 @@ async function pickFolder() {
 }
 
 // ------------------------
-// GitHub mode (Public repos)
+// Generic Tree Building (GitHub & ZIP)
 // ------------------------
+
+function buildTreeFromPaths(rootLabel, entries, source) {
+  const root = NodeFactory.createFolder(rootLabel, {
+    loaded: true,
+    source,
+  });
+
+  const dirMap = new Map();
+  dirMap.set("", root);
+
+  function getOrCreateDir(path) {
+    if (dirMap.has(path)) return dirMap.get(path);
+    const parts = path.split("/");
+    const name = parts[parts.length - 1];
+    const parentPath = parts.slice(0, -1).join("/");
+    const parent = getOrCreateDir(parentPath);
+
+    const node = NodeFactory.createFolder(name, {
+      loaded: true,
+      source,
+    });
+
+    parent.children.push(node);
+    dirMap.set(path, node);
+    return node;
+  }
+
+  // Process entries
+  entries.forEach((entry) => {
+    const path = entry.path || entry;
+    if (!path || path.endsWith("/")) {
+      if (path && path !== "/") {
+        getOrCreateDir(path.slice(0, -1));
+      }
+      return;
+    }
+
+    const parts = path.split("/");
+    const parentPath = parts.slice(0, -1).join("/");
+    const parent = getOrCreateDir(parentPath);
+
+    // For GitHub, check if it's a tree type
+    if (entry.type === "tree") {
+      getOrCreateDir(path);
+      return;
+    }
+
+    parent.children.push(
+      NodeFactory.createFile(parts[parts.length - 1], {
+        source,
+      }),
+    );
+  });
+
+  function sortNode(node) {
+    node.children.sort((a, b) => {
+      if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+      return a.label.localeCompare(b.label);
+    });
+    for (const c of node.children) sortNode(c);
+    node.hasChildren = node.children.length > 0;
+  }
+
+  sortNode(root);
+  return root;
+}
+
+// ------------------------
+// GitHub Mode
+// ------------------------
+
+function buildTreeFromGitHubPaths(rootLabel, entries) {
+  return buildTreeFromPaths(rootLabel, entries, "github");
+}
 
 async function loadGitHubRepo() {
   const repoFull = (ghRepo?.value || "").trim();
@@ -679,95 +842,37 @@ async function loadGitHubRepo() {
   renderTree(currentRoot);
 }
 
-function buildTreeFromGitHubPaths(rootLabel, entries) {
-  const root = {
-    id: makeId(),
-    label: rootLabel,
-    type: "folder",
-    children: [],
-    hasChildren: true,
-    loaded: true, // IMPORTANT: github is fully materialized
-    source: "github",
-  };
+// ------------------------
+// ZIP Mode
+// ------------------------
 
-  const dirMap = new Map(); // path -> node
-  dirMap.set("", root);
+function buildTreeFromZipEntries(zipName, files) {
+  const rootLabel = zipName.replace(/\.zip$/i, "");
+  const entries = Object.keys(files);
+  return buildTreeFromPaths(rootLabel, entries, "zip");
+}
 
-  function getOrCreateDir(path) {
-    if (dirMap.has(path)) return dirMap.get(path);
-    const parts = path.split("/");
-    const name = parts[parts.length - 1];
-    const parentPath = parts.slice(0, -1).join("/");
-    const parent = getOrCreateDir(parentPath);
+async function loadZipFile(file) {
+  try {
+    const zip = await JSZip.loadAsync(file);
 
-    const node = {
-      id: makeId(),
-      label: name,
-      type: "folder",
-      children: [],
-      hasChildren: true,
-      loaded: true, // IMPORTANT: github is fully materialized
-      source: "github",
-    };
+    currentMode = "zip";
+    currentRoot = buildTreeFromZipEntries(file.name, zip.files);
 
-    parent.children.push(node);
-    dirMap.set(path, node);
-    return node;
+    elMeta.textContent = `ZIP: ${file.name} • loaded: ${humanNow()}`;
+    setControlsEnabled(true);
+    renderTree(currentRoot);
+  } catch (e) {
+    handleError(e, "ZIP Load", "Failed to read ZIP file");
   }
-
-  for (const e of entries) {
-    if (!e.path) continue;
-
-    const parts = e.path.split("/");
-    const parentPath = parts.slice(0, -1).join("/");
-    const parent = getOrCreateDir(parentPath);
-
-    if (e.type === "tree") {
-      getOrCreateDir(e.path);
-    } else {
-      parent.children.push({
-        id: makeId(),
-        label: parts[parts.length - 1],
-        type: "file",
-        children: [],
-        hasChildren: false,
-        loaded: true,
-        source: "github",
-      });
-    }
-  }
-
-  function sortNode(node) {
-    node.children.sort((a, b) => {
-      if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
-      return a.label.localeCompare(b.label);
-    });
-    for (const c of node.children) sortNode(c);
-    node.hasChildren = node.children.length > 0;
-  }
-
-  sortNode(root);
-  return root;
 }
 
 // ------------------------
-// JSON mode
+// JSON Mode
 // ------------------------
-
-function isPlainObject(v) {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
-}
 
 function buildJsonTreeFromValue(label, value) {
-  const node = {
-    id: makeId(),
-    label,
-    type: "json",
-    children: [],
-    hasChildren: false,
-    loaded: true,
-    source: "json",
-  };
+  const node = NodeFactory.createJson(label);
 
   if (Array.isArray(value)) {
     node.hasChildren = value.length > 0;
@@ -788,7 +893,7 @@ function buildJsonTreeFromValue(label, value) {
 
       const child = buildJsonTreeFromValue(nodeName, item);
 
-      // Exclude the used field (like your C#) ONLY for that array item
+      // Exclude the used field ONLY for that array item
       if (excludeField && isPlainObject(item)) {
         child.children = child.children.filter((c) => c.label !== excludeField);
         child.hasChildren = child.children.length > 0;
@@ -805,8 +910,9 @@ function buildJsonTreeFromValue(label, value) {
     node.hasChildren = keys.length > 0;
 
     keys.sort((a, b) => a.localeCompare(b));
-    for (const k of keys)
+    for (const k of keys) {
       node.children.push(buildJsonTreeFromValue(k, value[k]));
+    }
     return node;
   }
 
@@ -823,7 +929,7 @@ async function loadJsonFile(file) {
   try {
     parsed = JSON.parse(text);
   } catch (e) {
-    alert("Invalid JSON: " + (e?.message || e));
+    handleError(e, "JSON Parse", "Invalid JSON");
     return;
   }
 
@@ -838,7 +944,7 @@ async function loadJsonFile(file) {
 }
 
 // ------------------------
-// Expand/collapse all
+// Expand/Collapse All
 // ------------------------
 
 function collapseAll() {
@@ -853,7 +959,7 @@ async function expandAll() {
     if (nodeEl) setNodeOpenState(nodeEl, true);
 
     if (node.type === "folder" && node.hasChildren && !node.loaded) {
-      // local FS only (github folders are loaded=true)
+      // local FS only (github/zip folders are loaded=true)
       await loadFolderChildren(node);
       node.loaded = true;
       const childrenWrap = nodeEl?.querySelector(":scope > .children");
@@ -871,7 +977,7 @@ async function expandAll() {
 }
 
 // ------------------------
-// PNG export helpers
+// PNG Export Helpers
 // ------------------------
 
 async function ensureIconsReadyForExport() {
@@ -882,7 +988,7 @@ async function ensureIconsReadyForExport() {
   const icons = Array.from(elTree.querySelectorAll(".icon[data-icon-ready]"));
   if (icons.length === 0) return;
 
-  const deadline = Date.now() + 2500;
+  const deadline = Date.now() + CONFIG.ICON_LOAD_TIMEOUT;
   while (Date.now() < deadline) {
     const pending = icons.some((el) => el.dataset.iconReady !== "1");
     if (!pending) return;
@@ -890,7 +996,7 @@ async function ensureIconsReadyForExport() {
   }
 }
 
-async function replaceIconImgsWithCanvases(root, size = 16) {
+async function replaceIconImgsWithCanvases(root, size = CONFIG.ICON_SIZE) {
   const imgs = Array.from(root.querySelectorAll(".icon img"));
 
   await Promise.all(
@@ -937,7 +1043,7 @@ async function replaceIconImgsWithCanvases(root, size = 16) {
 }
 
 // ------------------------
-// PNG export (fit width to content, no “thin line” bug)
+// PNG Export
 // ------------------------
 
 async function exportPng({ full }) {
@@ -979,8 +1085,8 @@ async function exportPng({ full }) {
     const tv = themeVars(effectiveTheme);
 
     const useBg = exportUseThemeBg?.checked ?? true;
-    const pad = 12;
-    const MAX_W = 6000;
+    const pad = CONFIG.EXPORT_PADDING;
+    const MAX_W = CONFIG.EXPORT_MAX_WIDTH;
 
     // Off-screen host (measurable)
     const cloneHost = document.createElement("div");
@@ -1006,9 +1112,9 @@ async function exportPng({ full }) {
 
     // icon box sizing inside clone
     cloneHost.querySelectorAll(".icon").forEach((el) => {
-      el.style.width = "16px";
-      el.style.height = "16px";
-      el.style.minWidth = "16px";
+      el.style.width = CONFIG.ICON_SIZE + "px";
+      el.style.height = CONFIG.ICON_SIZE + "px";
+      el.style.minWidth = CONFIG.ICON_SIZE + "px";
       el.style.display = "inline-flex";
       el.style.alignItems = "center";
       el.style.justifyContent = "center";
@@ -1017,10 +1123,10 @@ async function exportPng({ full }) {
 
     // clamp <img> sizes inside clone
     cloneHost.querySelectorAll(".icon img").forEach((im) => {
-      im.style.width = "16px";
-      im.style.height = "16px";
-      im.width = 16;
-      im.height = 16;
+      im.style.width = CONFIG.ICON_SIZE + "px";
+      im.style.height = CONFIG.ICON_SIZE + "px";
+      im.width = CONFIG.ICON_SIZE;
+      im.height = CONFIG.ICON_SIZE;
       im.style.display = "block";
     });
 
@@ -1029,7 +1135,7 @@ async function exportPng({ full }) {
     await new Promise((r) => requestAnimationFrame(() => r()));
 
     // convert icons <img> -> <canvas> for html2canvas reliability
-    await replaceIconImgsWithCanvases(cloneHost, 16);
+    await replaceIconImgsWithCanvases(cloneHost, CONFIG.ICON_SIZE);
 
     await new Promise((r) => requestAnimationFrame(() => r()));
 
@@ -1087,11 +1193,7 @@ async function exportPng({ full }) {
       await restoreOpenState(openNodeIds);
     }
   } catch (err) {
-    console.error(err);
-    alert(
-      "Export failed. Open DevTools Console for details.\n\n" +
-        (err?.message || err),
-    );
+    handleError(err, "PNG Export", "Export failed. Check console for details.");
   } finally {
     if (currentRoot) {
       btnExportFull.disabled = false;
@@ -1103,11 +1205,11 @@ async function exportPng({ full }) {
 }
 
 // ------------------------
-// Theme init
+// Initialization
 // ------------------------
 
 (function initTheme() {
-  const saved = localStorage.getItem("sv_theme") || "system";
+  const saved = localStorage.getItem(CONFIG.THEME_KEY) || "system";
   if (themeSelect) themeSelect.value = saved;
   applyTheme(saved);
 
@@ -1118,28 +1220,78 @@ async function exportPng({ full }) {
   if (window.matchMedia) {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     mq.addEventListener?.("change", () => {
-      const cur = localStorage.getItem("sv_theme") || "system";
+      const cur = localStorage.getItem(CONFIG.THEME_KEY) || "system";
       if (cur === "system") applyTheme("system");
     });
   }
 })();
 
+(function initAdvancedIcons() {
+  if (!window.EXT_TO_ICONKEY) {
+    console.warn(
+      "EXT_TO_ICONKEY not found. Make sure icons-map.js is loaded before app.js",
+    );
+  }
+
+  const saved = localStorage.getItem(CONFIG.ADVANCED_ICONS_KEY) === "1";
+  advancedIconsEnabled = saved;
+
+  if (advancedIconsToggle) {
+    advancedIconsToggle.checked = saved;
+    advancedIconsToggle.addEventListener("change", async () => {
+      advancedIconsEnabled = advancedIconsToggle.checked;
+      localStorage.setItem(
+        CONFIG.ADVANCED_ICONS_KEY,
+        advancedIconsEnabled ? "1" : "0",
+      );
+      await rerenderIfLoaded();
+    });
+  }
+})();
+
+const lockCheckbox = document.getElementById("lockTreeHeight");
+lockCheckbox.addEventListener("change", () => {
+  const panel = document.querySelector(".panel");
+  panel.dataset.fixed = lockCheckbox.checked ? "true" : "false";
+});
+
 // ------------------------
-// Events
+// Event Listeners
 // ------------------------
+
+lockCheckbox.addEventListener("change", () => {
+  const panel = document.querySelector(".panel");
+  panel.dataset.fixed = lockCheckbox.checked ? "true" : "false";
+
+  const treeWrap = document.getElementById("treeWrap");
+  const notes = document.getElementById("notes");
+
+  if (lockCheckbox.checked && notes) {
+    // Get total visual height of notes
+    const notesRect = notes.getBoundingClientRect();
+    const treeRect = treeWrap.getBoundingClientRect();
+
+    // Calculate max-height with a tiny safety buffer
+    const maxH = notesRect.height - (treeRect.top - notesRect.top) - 4;
+    treeWrap.style.maxHeight = `${maxH}px`;
+    treeWrap.style.overflowY = "auto";
+  } else {
+    treeWrap.style.maxHeight = "";
+    treeWrap.style.overflowY = "";
+  }
+});
 
 btnPickFolder?.addEventListener("click", async () => {
   try {
     await pickFolder();
   } catch (e) {
-    console.warn(e);
+    handleError(e, "Folder Picker");
   }
 });
 
 btnLoadGitHub?.addEventListener("click", () => {
   loadGitHubRepo().catch((e) => {
-    console.error(e);
-    alert(e?.message || e);
+    handleError(e, "GitHub Load", "Failed to load GitHub repository");
     elMeta.textContent = "Failed to load GitHub repo.";
     setControlsEnabled(false);
   });
@@ -1150,6 +1302,13 @@ jsonInput?.addEventListener("change", async (e) => {
   if (!file) return;
   await loadJsonFile(file);
   jsonInput.value = "";
+});
+
+zipInput?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  await loadZipFile(file);
+  zipInput.value = "";
 });
 
 btnCollapseAll?.addEventListener("click", () => collapseAll());
@@ -1166,6 +1325,7 @@ btnExpandAll?.addEventListener("click", async () => {
 btnExportView?.addEventListener("click", async () =>
   exportPng({ full: false }),
 );
+
 btnExportFull?.addEventListener("click", async () => exportPng({ full: true }));
 
 // start clean

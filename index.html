@@ -40,6 +40,11 @@
             Folder
           </button>
 
+          <label class="fileBtn" title="Load a ZIP archive file">
+            ZIP
+            <input id="zipInput" type="file" accept=".zip" hidden />
+          </label>
+
           <label class="fileBtn" title="Load a local JSON file">
             JSON
             <input id="jsonInput" type="file" hidden />
@@ -120,6 +125,10 @@
             Tip: Click folder triangles to expand. “Export view” captures
             exactly what’s open.
           </div>
+          <label class="check">
+            <input type="checkbox" id="lockTreeHeight" checked />
+            Fixed height
+          </label>
         </div>
 
         <div id="treeWrap" class="treeWrap">
@@ -147,6 +156,13 @@
               <b>Folder access.</b> Folder browsing is supported in
               Chromium-based browsers (Chrome, Edge) using the File System
               Access API. Other browsers can still load JSON files.
+            </li>
+
+            <li>
+              <b>ZIP files.</b> You can load and explore the structure of ZIP
+              archives without extracting them. The entire file tree is
+              displayed instantly, showing all folders and files contained
+              within the archive.
             </li>
 
             <li>
@@ -218,6 +234,8 @@
 
     <!-- html2canvas for PNG export -->
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <!-- for zip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="./icons-map.js"></script>
     <script src="./app.js"></script>
   </body>
