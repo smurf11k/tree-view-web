@@ -160,30 +160,6 @@ No build step required.
 
 Designed to run well even on older or low-powered machines.
 
-## 📄 License
-
-**Custom License – Personal & Educational Use Only**
-
-**Copyright © 2026**
-
-Permission is granted to use this software for:
-
-- Personal projects
-- Educational purposes
-- Learning, experimentation, and reference
-
-The following are **not permitted** without explicit written permission from the author:
-
-- Redistribution (free or paid)
-- Commercial use
-- Repackaging or reselling
-- Hosting modified or unmodified versions as a public service
-- Including this project in other distributed software
-
-This software is provided **“as is”**, without warranty of any kind.
-
-If you want to use this project beyond personal or educational purposes, please contact the author.
-
 ## ⭐ Notes
 
 This project was built with a strong focus on:
