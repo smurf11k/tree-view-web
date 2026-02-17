@@ -136,6 +136,7 @@ This tool is safe to use with sensitive local data.
 | Feature        | Support             |
 | -------------- | ------------------- |
 | Folder picker  | Chrome, Edge        |
+| ZIP viewer     | All modern browsers |
 | JSON viewer    | All modern browsers |
 | PNG export     | All modern browsers |
 | Advanced icons | All modern browsers |
