@@ -357,14 +357,17 @@ select {
 
 /* when locked, treeWrap scrolls and matches notes height */
 .panel[data-fixed="true"] .treeWrap {
-  max-height: calc(72vh - 52px); /* Adjust based on header height */
-  flex: unset; /* Override flex when fixed */
+  height: auto;
+  max-height: none;
+  flex: 1 1 auto;
   overflow-y: auto;
 }
 
 /* when unlocked, panel expands naturally */
 .panel[data-fixed="false"] .treeWrap {
+  height: auto;
   max-height: none;
+  flex: 0 0 auto;
   overflow: visible;
 }
 
@@ -405,7 +408,7 @@ select {
   flex: 1;
   overflow: auto;
   padding: 12px;
-  max-height: calc(72vh - 52px);
+  min-height: 0;
 }
 
 .tree {

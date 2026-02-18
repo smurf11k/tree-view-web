@@ -1250,36 +1250,40 @@ async function exportPng({ full }) {
 })();
 
 const lockCheckbox = document.getElementById("lockTreeHeight");
-lockCheckbox.addEventListener("change", () => {
+function syncTreeHeight() {
   const panel = document.querySelector(".panel");
+  const sidePanel = document.querySelector(".panel.side");
+  const treeWrap = document.getElementById("treeWrap");
+  if (!panel || !treeWrap || !lockCheckbox) return;
+
   panel.dataset.fixed = lockCheckbox.checked ? "true" : "false";
-});
+
+  if (lockCheckbox.checked) {
+    const lockRect = (sidePanel || panel).getBoundingClientRect();
+    const treeRect = treeWrap.getBoundingClientRect();
+    const availableHeight = Math.max(
+      0,
+      Math.floor(lockRect.bottom - treeRect.top),
+    );
+
+    treeWrap.style.height = `${availableHeight}px`;
+    treeWrap.style.maxHeight = `${availableHeight}px`;
+    treeWrap.style.overflowY = "auto";
+  } else {
+    treeWrap.style.height = "";
+    treeWrap.style.maxHeight = "";
+    treeWrap.style.overflowY = "";
+    treeWrap.style.overflow = "";
+  }
+}
+
+lockCheckbox?.addEventListener("change", syncTreeHeight);
+window.addEventListener("resize", syncTreeHeight);
+requestAnimationFrame(syncTreeHeight);
 
 // ------------------------
 // Event Listeners
 // ------------------------
-
-lockCheckbox.addEventListener("change", () => {
-  const panel = document.querySelector(".panel");
-  panel.dataset.fixed = lockCheckbox.checked ? "true" : "false";
-
-  const treeWrap = document.getElementById("treeWrap");
-  const notes = document.getElementById("notes");
-
-  if (lockCheckbox.checked && notes) {
-    // Get total visual height of notes
-    const notesRect = notes.getBoundingClientRect();
-    const treeRect = treeWrap.getBoundingClientRect();
-
-    // Calculate max-height with a tiny safety buffer
-    const maxH = notesRect.height - (treeRect.top - notesRect.top) - 4;
-    treeWrap.style.maxHeight = `${maxH}px`;
-    treeWrap.style.overflowY = "auto";
-  } else {
-    treeWrap.style.maxHeight = "";
-    treeWrap.style.overflowY = "";
-  }
-});
 
 btnPickFolder?.addEventListener("click", async () => {
   try {
