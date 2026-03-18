@@ -3,15 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Structure Viewer (Folder / JSON)</title>
+    <title>Structure Viewer</title>
     <link rel="stylesheet" href="./styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    />
     <link rel="icon" href="./assets/favicon.ico" type="image/x-icon" />
   </head>
   <body>
     <header class="topbar">
       <div class="title">
         <div class="h1">Structure Viewer</div>
-        <div class="sub">Folder tree (File System Access API) + JSON tree</div>
+        <div class="sub">Explore folders, ZIPs, JSON &amp; GitHub repos</div>
       </div>
 
       <div class="actions">
@@ -118,17 +122,15 @@
       <section class="panel">
         <div class="panelHeader">
           <div>
-            <div class="panelTitle">Tree</div>
+            <div class="panelTitle">Explorer</div>
             <div id="meta" class="panelMeta">No data loaded.</div>
           </div>
-          <div class="hint">
-            Tip: Click folder triangles to expand. “Export view” captures
-            exactly what’s open.
+          <div class="panel-header-controls">
+            <label class="check">
+              <input type="checkbox" id="lockTreeHeight" checked />
+              Fixed height
+            </label>
           </div>
-          <label class="check">
-            <input type="checkbox" id="lockTreeHeight" checked />
-            Fixed height
-          </label>
         </div>
 
         <div id="treeWrap" class="treeWrap">
@@ -140,68 +142,112 @@
         <div class="panelHeader">
           <div>
             <div class="panelTitle">Notes</div>
-            <div class="panelMeta">Compatibility / behavior</div>
+            <div class="panelMeta">How things work</div>
           </div>
+          <button class="notes-close-btn" id="notesCloseBtn" title="Hide notes">
+            <i class="bi bi-x-lg"></i>
+          </button>
         </div>
 
         <div class="notes">
-          <ul>
-            <li>
-              <b>Local only.</b> All folders and JSON files are processed
-              entirely in your browser. Nothing is uploaded, stored, or sent
-              anywhere.
-            </li>
+          <details class="notes-section" open>
+            <summary class="notes-section-title">
+              <i class="bi bi-shield-check"></i> Privacy
+            </summary>
+            <div class="notes-item">
+              <b>Local only.</b> Everything runs in your browser — no uploads,
+              no servers, no tracking.
+            </div>
+          </details>
 
-            <li>
-              <b>Folder access.</b> Folder browsing is supported in
-              Chromium-based browsers (Chrome, Edge) using the File System
-              Access API. Other browsers can still load JSON files.
-            </li>
+          <details class="notes-section">
+            <summary class="notes-section-title">
+              <i class="bi bi-folder2-open"></i> Loading data
+            </summary>
+            <div class="notes-item">
+              <b>Folder.</b> Uses the File System Access API — supported in
+              Chrome and Edge. Subfolders load lazily for performance.
+            </div>
+            <div class="notes-item">
+              <b>ZIP.</b> Drop in any <code>.zip</code> to explore its full
+              structure without extracting. Works in all modern browsers.
+            </div>
+            <div class="notes-item">
+              <b>JSON.</b> Loads any <code>.json</code> file as an interactive
+              tree. Arrays of objects use <code>name</code>, <code>title</code>,
+              or <code>id</code> as labels when available.
+            </div>
+            <div class="notes-item">
+              <b>GitHub.</b> Enter <code>owner/repo</code> and an optional
+              branch to load any <b>public</b> repository. Uses the GitHub API —
+              rate limits may apply.
+            </div>
+          </details>
 
-            <li>
-              <b>ZIP files.</b> You can load and explore the structure of ZIP
-              archives without extracting them. The entire file tree is
-              displayed instantly, showing all folders and files contained
-              within the archive.
-            </li>
+          <details class="notes-section">
+            <summary class="notes-section-title">
+              <i class="bi bi-pencil"></i> Annotations
+            </summary>
+            <div class="notes-item">
+              <b>💬 Comments.</b> Hover a row and click to add a short note.
+              Appears inline as <i>&larr; your note</i>. Click again to edit or
+              close. Saved across reloads.
+            </div>
+            <div class="notes-item">
+              <b>🎨 Highlights.</b> Pick from 6 colours to tint a row. On
+              folders, use <b>📂</b> inside the palette to extend the colour to
+              all contents. Changing colour while folder highlight is active
+              updates both together.
+            </div>
+            <div class="notes-item">
+              <b>📋 Legend.</b> Once a row is coloured, attach a label to that
+              colour (e.g. <i>&ldquo;backend&rdquo;</i>). Labels are shared
+              across all nodes of the same colour and appear as a live panel
+              below the tree. Each label must be unique.
+            </div>
+            <div class="notes-item">
+              <b>🗑 Clearing.</b> <b>Colors</b> wipes all highlights and legend
+              labels. <b>Legend</b> clears labels only. <b>Comments</b> clears
+              all comments. All three also clear the corresponding
+              <code>localStorage</code> data.
+            </div>
+          </details>
 
-            <li>
-              <b>GitHub load.</b> You can load the folder structure of a
-              <b>public</b> GitHub repository by entering
-              <code>owner/repo</code> (optionally a branch) and clicking
-              “GitHub”. This uses the GitHub API and may be slow or blocked if
-              you hit rate limits.
-            </li>
+          <details class="notes-section">
+            <summary class="notes-section-title">
+              <i class="bi bi-image"></i> Export
+            </summary>
+            <div class="notes-item">
+              <b>Export view</b> captures exactly what is expanded.
+              <b>Export full</b> expands everything first. Comments, highlights,
+              and the legend are all included. UI buttons and inputs are never
+              exported.
+            </div>
+            <div class="notes-item">
+              <b>Theme background.</b> Toggle whether exports include the
+              current theme background or use a transparent background.
+            </div>
+          </details>
 
-            <li>
-              <b>Theme background.</b> When enabled, exported PNG images include
-              the current theme background. When disabled, exports use a
-              transparent background.
-            </li>
-
-            <li>
-              <b>Advanced icons.</b> Replaces generic file icons with file-type
-              icons loaded from the web (based on file extensions). This may
-              slightly slow down rendering on very large trees.
-            </li>
-
-            <li>
-              <b>Performance.</b> Expanding very large folder structures or JSON
-              files may take a moment, especially when using “Expand all”.
-            </li>
-
-            <li>
-              <b>Exports.</b> “Export view” saves exactly what is currently
-              expanded. “Export full” temporarily expands everything before
-              exporting.
-            </li>
-
-            <li>
+          <details class="notes-section">
+            <summary class="notes-section-title">
+              <i class="bi bi-gear"></i> Other
+            </summary>
+            <div class="notes-item">
+              <b>Advanced icons.</b> Replaces generic file emoji with file-type
+              icons based on extension. Loaded from the web and cached locally.
+              May slow down very large trees slightly.
+            </div>
+            <div class="notes-item">
+              <b>Performance.</b> Expanding very large trees may take a moment,
+              especially with &ldquo;Expand all&rdquo;.
+            </div>
+            <div class="notes-item">
               <b>JSON display.</b> For arrays of objects, common fields
               (<code>name</code>, <code>username</code>, <code>title</code>,
               <code>id</code>) are used as node labels when available.
-            </li>
-          </ul>
+            </div>
+          </details>
         </div>
       </section>
     </main>
@@ -212,21 +258,31 @@
           <span>All processing happens locally in your browser</span>
         </div>
 
+        <div class="footerCenter">
+          <a
+            href="https://ko-fi.com/smurf11k"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="kofi-btn"
+          >
+            ☕ Support on Ko-fi
+          </a>
+        </div>
+
         <div class="footerRight">
           <a
             href="https://github.com/smurf11k/tree-view-web"
             target="_blank"
             rel="noopener noreferrer"
           >
-            GitHub
+            <i class="bi bi-github"></i> GitHub
           </a>
-          <span class="dot">•</span>
           <a
             href="https://github.com/smurf11k/tree-view-web/issues"
             target="_blank"
             rel="noopener noreferrer"
           >
-            Report an issue
+            <i class="bi bi-info-circle"></i> Report an issue
           </a>
         </div>
       </div>

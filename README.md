@@ -1,6 +1,6 @@
 # Structure Viewer
 
-A lightweight, browser-based tool for visualizing **folder structures**, **JSON data**, and **public GitHub repositories** as an interactive tree — with optional advanced file-type icons and PNG export.
+A lightweight, browser-based tool for visualizing **folder structures**, **JSON data**, and **public GitHub repositories** as an interactive tree — with optional advanced file-type icons, inline annotations, color highlights, and PNG export.
 
 Built to be fast, privacy-friendly, and dependency-light.  
 Runs entirely in the browser. No uploads. No servers.
@@ -57,6 +57,75 @@ This mode is useful for quickly inspecting project layouts without cloning anyth
 
 ---
 
+### 💬 Comments
+
+- Hover any node and click **💬** to add a short inline annotation
+- Comment appears next to the label as `← your note`
+- Click **💬** again to edit or close the editor
+- Press `Enter` to save, `Escape` to cancel
+- Comments are included in PNG exports
+- Persisted in `localStorage` — survive page reloads
+- Clear all comments at once with the **🗑 Comments** button in the tree panel header
+
+---
+
+### 🎨 Color Highlights
+
+- Hover any node and click **🎨** to open the color palette
+- Choose from 6 colors to highlight the row with a tinted background and left border
+- For **folder nodes**, use the **📂** button inside the palette to extend the highlight to all folder contents
+- Changing a folder's color while the folder highlight is active **automatically updates both** the row and its contents
+- Highlights are included in PNG exports
+- Persisted in `localStorage` — survive page reloads
+- Clear all highlights at once with the **🗑 Colors** button in the tree panel header
+
+---
+
+### 📋 Legend
+
+- Once a node is colored, hover it and click **📋** to attach a text label to that color
+- Labels are **shared across all nodes using the same color** — set once, applies everywhere
+- Each label must be unique across colors (duplicates are blocked with a validation error)
+- The legend renders live **below the tree** as a colored-dot reference panel — hidden when no data is loaded
+- The legend is included as a **separate section** in PNG exports
+- Persisted in `localStorage` — survives page reloads
+- Use **🗑 Legend** to clear only the labels while keeping color highlights visible
+- Use **🗑 Colors** to clear both highlights and legend labels at once
+
+---
+
+### 🗑 Clearing Annotations
+
+Three dedicated buttons sit in the tree panel header:
+
+| Button          | What it clears                           | Keeps            |
+| --------------- | ---------------------------------------- | ---------------- |
+| **🗑 Colors**   | All color highlights + all legend labels | Comments         |
+| **🗑 Legend**   | All legend labels only                   | Colors, comments |
+| **🗑 Comments** | All inline comments                      | Colors, legend   |
+
+All three actions also wipe the corresponding `localStorage` entries — cleared data does not come back on reload.
+
+---
+
+### 🖼️ Annotations & Legend Examples
+
+| Dark theme                                                                                                  | Light theme                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| <img src="img/dark-annotated.png" height="400" alt="Dark theme with comments, color highlights and legend"> | <img src="img/light-annotated.png" height="400" alt="Light theme with comments, color highlights and legend"> |
+
+Both images show comments, color highlights, folder highlights, and the legend panel together.
+
+---
+
+### Feature Close-ups
+
+| 💬 Comments                                                                                      | 🎨 Color highlights                                                                       | 📋 Legend                                                                         |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| <img src="img/feature-comments.png" height="260" alt="Inline comment annotation on a tree node"> | <img src="img/feature-colors.png" height="260" alt="Color palette and highlighted nodes"> | <img src="img/feature-legend.png" height="260" alt="Legend panel below the tree"> |
+
+---
+
 ### 🎨 Themes
 
 - **System**, **Dark**, and **Light** themes
@@ -67,11 +136,13 @@ This mode is useful for quickly inspecting project layouts without cloning anyth
 
 ### 🖼️ PNG Export
 
-- **Export View** – exports exactly what’s expanded
+- **Export View** – exports exactly what's expanded
 - **Export Full** – auto-expands everything before export
 - Optional background (transparent or theme-colored)
 - Export width auto-fits to content
 - Icons are rasterized safely for reliable exports
+- Action buttons, input boxes, and palettes are **never included** in exports
+- Legend section is appended automatically if labels are defined
 
 ---
 
@@ -103,12 +174,13 @@ Below are example exports showing the available combinations.
 - Icons are rasterized for reliable, crisp output
 - **Export View** captures only expanded nodes
 - **Export Full** temporarily expands the entire tree
+- Color highlights, comments, and legend are all included in exports
 
 ---
 
 ### 🧠 Advanced File Icons (Optional)
 
-- Toggleable “Advanced Icons” mode
+- Toggleable "Advanced Icons" mode
 - Loads official file-type icons (based on VS Code icon set)
 - Supports many formats:
   - Code: `.js`, `.ts`, `.cs`, `.java`, `.py`, `.cpp`, …
@@ -140,6 +212,9 @@ This tool is safe to use with sensitive local data.
 | JSON viewer    | All modern browsers |
 | PNG export     | All modern browsers |
 | Advanced icons | All modern browsers |
+| Comments       | All modern browsers |
+| Highlights     | All modern browsers |
+| Legend         | All modern browsers |
 
 ---
 
@@ -148,9 +223,10 @@ This tool is safe to use with sensitive local data.
 ### Online (GitHub Pages)
 
 1. Open the hosted page
-2. Click **Pick Folder** or **Pick JSON**
+2. Click **Pick Folder**, **Pick JSON**, or load a **ZIP / GitHub repo**
 3. Explore the tree
-4. Export if needed
+4. Optionally annotate with comments, colors, and legend labels
+5. Export if needed
 
 ### Local
 
@@ -167,6 +243,7 @@ No build step required.
 - Vanilla HTML / CSS / JavaScript
 - html2canvas for PNG export
 - File System Access API (Chromium)
+- Bootstrap Icons (UI chrome)
 - Zero frameworks
 
 Designed to run well even on older or low-powered machines.
@@ -180,12 +257,16 @@ This project was built with a strong focus on:
 - Correct exports
 - Predictable behavior
 
-If something looks boring in the code — it’s probably intentional 🙂
+If something looks boring in the code — it's probably intentional 🙂
 
 ## ❤️ Acknowledgements
 
 - File-type icons inspired by the VS Code icon ecosystem
 - Thanks to browser vendors for finally making local file access usable
+
+---
+
+☕ If this tool saves you time, consider [supporting on Ko-fi](https://ko-fi.com/smurf11k)
 
 ---
 

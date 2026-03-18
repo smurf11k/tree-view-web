@@ -15,6 +15,18 @@ const CONFIG = {
   ICON_CACHE_KEY: "sv_icon_cache_v1",
   THEME_KEY: "sv_theme",
   ADVANCED_ICONS_KEY: "sv_adv_icons",
+  COMMENTS_KEY: "sv_comments_v1",
+  COLORS_KEY: "sv_colors_v1",
+  FOLDER_COLORS_KEY: "sv_folder_colors_v1",
+  LEGEND_KEY: "sv_legend_v1",
+  HIGHLIGHT_COLORS: [
+    { name: "red", value: "#ff6b6b" },
+    { name: "orange", value: "#ffa94d" },
+    { name: "yellow", value: "#ffe066" },
+    { name: "green", value: "#69db7c" },
+    { name: "blue", value: "#74c0fc" },
+    { name: "purple", value: "#da77f2" },
+  ],
   EXPORT_MAX_WIDTH: 6000,
   EXPORT_PADDING: 12,
   ICON_LOAD_TIMEOUT: 2500,
@@ -90,6 +102,202 @@ let currentRoot = null; // generic node model
 let currentMode = null; // "folder" | "json" | "github" | "zip"
 let advancedIconsEnabled = false;
 let nodeIdCounter = 0;
+
+// nodeComments: Map<nodeId, string> — persisted to localStorage
+const nodeComments = (function loadComments() {
+  try {
+    const raw = localStorage.getItem(CONFIG.COMMENTS_KEY);
+    if (!raw) return new Map();
+    return new Map(JSON.parse(raw));
+  } catch {
+    return new Map();
+  }
+})();
+
+function saveComments() {
+  try {
+    localStorage.setItem(
+      CONFIG.COMMENTS_KEY,
+      JSON.stringify(Array.from(nodeComments.entries())),
+    );
+  } catch {}
+}
+
+// nodeColors: Map<nodeId, string> — hex color, persisted to localStorage
+const nodeColors = (function loadColors() {
+  try {
+    const raw = localStorage.getItem(CONFIG.COLORS_KEY);
+    if (!raw) return new Map();
+    return new Map(JSON.parse(raw));
+  } catch {
+    return new Map();
+  }
+})();
+
+function saveColors() {
+  try {
+    localStorage.setItem(
+      CONFIG.COLORS_KEY,
+      JSON.stringify(Array.from(nodeColors.entries())),
+    );
+  } catch {}
+}
+
+// nodeFolderColors: Map<nodeId, string> — folder-wide highlight, persisted
+const nodeFolderColors = (function loadFolderColors() {
+  try {
+    const raw = localStorage.getItem(CONFIG.FOLDER_COLORS_KEY);
+    if (!raw) return new Map();
+    return new Map(JSON.parse(raw));
+  } catch {
+    return new Map();
+  }
+})();
+
+function saveFolderColors() {
+  try {
+    localStorage.setItem(
+      CONFIG.FOLDER_COLORS_KEY,
+      JSON.stringify(Array.from(nodeFolderColors.entries())),
+    );
+  } catch {}
+}
+
+// colorLegend: Map<hexColor, labelString> — user-defined legend entries
+const colorLegend = (function loadLegend() {
+  try {
+    const raw = localStorage.getItem(CONFIG.LEGEND_KEY);
+    if (!raw) return new Map();
+    return new Map(JSON.parse(raw));
+  } catch {
+    return new Map();
+  }
+})();
+
+function saveLegend() {
+  try {
+    localStorage.setItem(
+      CONFIG.LEGEND_KEY,
+      JSON.stringify(Array.from(colorLegend.entries())),
+    );
+  } catch {}
+}
+
+// Returns the set of colors currently in use across the tree
+function getUsedColors() {
+  const used = new Set();
+  for (const v of nodeColors.values()) used.add(v);
+  for (const v of nodeFolderColors.values()) used.add(v);
+  return used;
+}
+
+// Builds and returns a legend DOM element styled with themeVars tv
+function buildLegendElement(tv) {
+  const usedColors = getUsedColors();
+  // Only include entries for colors that are actually used in the tree
+  const entries = CONFIG.HIGHLIGHT_COLORS.filter(
+    ({ value }) => usedColors.has(value) && colorLegend.has(value),
+  );
+  if (entries.length === 0) return null;
+
+  const wrap = document.createElement("div");
+  wrap.className = "legend-wrap";
+  wrap.style.marginTop = "16px";
+  wrap.style.padding = "10px 14px";
+  wrap.style.border = `1px solid ${tv.border}`;
+  wrap.style.borderRadius = "6px";
+  wrap.style.background = tv.panel;
+  wrap.style.color = tv.text;
+  wrap.style.fontFamily = "inherit";
+  wrap.style.fontSize = "13px";
+
+  const title = document.createElement("div");
+  title.textContent = "Legend";
+  title.style.fontWeight = "600";
+  title.style.marginBottom = "8px";
+  title.style.color = tv.muted;
+  title.style.textTransform = "uppercase";
+  title.style.fontSize = "11px";
+  title.style.letterSpacing = "0.05em";
+  wrap.appendChild(title);
+
+  const grid = document.createElement("div");
+  grid.style.display = "flex";
+  grid.style.flexWrap = "wrap";
+  grid.style.gap = "8px 18px";
+  wrap.appendChild(grid);
+
+  for (const { value } of entries) {
+    const label = colorLegend.get(value);
+    const item = document.createElement("div");
+    item.style.display = "flex";
+    item.style.alignItems = "center";
+    item.style.gap = "7px";
+
+    const swatch = document.createElement("span");
+    swatch.style.display = "inline-block";
+    swatch.style.width = "12px";
+    swatch.style.height = "12px";
+    swatch.style.borderRadius = "50%";
+    swatch.style.background = value;
+    swatch.style.flexShrink = "0";
+
+    const text = document.createElement("span");
+    text.textContent = label;
+    text.style.color = tv.text;
+
+    item.appendChild(swatch);
+    item.appendChild(text);
+    grid.appendChild(item);
+  }
+
+  return wrap;
+}
+
+// Re-renders the live legend panel in the UI.
+// The #legendWrap container is created dynamically on first use
+// and injected after #treeWrap inside the same panel.
+function renderLiveLegend() {
+  let container = document.getElementById("legendWrap");
+
+  if (!container) {
+    const treeWrap = document.getElementById("treeWrap");
+    if (!treeWrap) return;
+    container = document.createElement("div");
+    container.id = "legendWrap";
+    container.style.padding = "0 12px 12px";
+    treeWrap.parentNode.insertBefore(container, treeWrap.nextSibling);
+  }
+
+  container.innerHTML = "";
+  // Don't show legend when no tree is loaded
+  if (!currentRoot) {
+    container.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
+  const effectiveTheme = getEffectiveTheme();
+  const tv = themeVars(effectiveTheme);
+  const el = buildLegendElement(tv);
+  if (el) {
+    container.appendChild(el);
+    container.style.display = "";
+  } else {
+    container.style.display = "none";
+  }
+}
+
+function applyFolderColor(childrenWrap, color) {
+  if (color) {
+    childrenWrap.style.setProperty("--folder-highlight", color + "18");
+    childrenWrap.style.setProperty("--folder-highlight-border", color);
+    childrenWrap.classList.add("children-highlighted");
+  } else {
+    childrenWrap.style.removeProperty("--folder-highlight");
+    childrenWrap.style.removeProperty("--folder-highlight-border");
+    childrenWrap.classList.remove("children-highlighted");
+  }
+}
 
 // ------------------------
 // Utility Functions
@@ -313,6 +521,7 @@ function clearTree() {
   currentMode = null;
   setControlsEnabled(false);
   elMeta.textContent = "No data loaded.";
+  renderLiveLegend();
 }
 
 // ------------------------
@@ -433,12 +642,349 @@ function createNodeElement(node) {
   label.className = "label";
   label.textContent = node.label;
 
+  // --- Comment annotation (shown when a comment exists) ---
+  const commentAnnotation = document.createElement("span");
+  commentAnnotation.className = "node-comment-annotation";
+  const existingComment = nodeComments.get(node.id) || "";
+  commentAnnotation.textContent = existingComment ? `← ${existingComment}` : "";
+  commentAnnotation.style.display = existingComment ? "" : "none";
+
+  // --- Add comment button (shown on row hover) ---
+  const commentBtn = document.createElement("button");
+  commentBtn.className = "node-comment-btn";
+  commentBtn.title = "Add / edit comment";
+  commentBtn.textContent = "💬";
+  commentBtn.setAttribute("aria-label", "Edit comment");
+
+  // --- Inline editor (hidden until button clicked) ---
+  const commentEditor = document.createElement("span");
+  commentEditor.className = "node-comment-editor";
+  commentEditor.style.display = "none";
+
+  const commentInput = document.createElement("input");
+  commentInput.type = "text";
+  commentInput.className = "node-comment-input";
+  commentInput.placeholder = "Add a comment…";
+  commentInput.value = existingComment;
+  commentInput.maxLength = 120;
+
+  const confirmBtn = document.createElement("button");
+  confirmBtn.className = "node-comment-confirm";
+  confirmBtn.textContent = "✓";
+  confirmBtn.title = "Save comment";
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.className = "node-comment-delete";
+  deleteBtn.textContent = "✕";
+  deleteBtn.title = "Remove comment";
+
+  commentEditor.appendChild(commentInput);
+  commentEditor.appendChild(confirmBtn);
+  commentEditor.appendChild(deleteBtn);
+
+  function openEditor(e) {
+    e.stopPropagation();
+    const isOpen = commentEditor.style.display !== "none";
+    if (isOpen) {
+      commentEditor.style.display = "none";
+      commentAnnotation.style.display = nodeComments.has(node.id) ? "" : "none";
+      return;
+    }
+    commentEditor.style.display = "";
+    commentAnnotation.style.display = "none";
+    commentInput.value = nodeComments.get(node.id) || "";
+    commentInput.focus();
+    commentInput.select();
+  }
+
+  function saveComment(e) {
+    if (e) e.stopPropagation();
+    const val = commentInput.value.trim();
+    if (val) {
+      nodeComments.set(node.id, val);
+      commentAnnotation.textContent = `← ${val}`;
+      commentAnnotation.style.display = "";
+    } else {
+      nodeComments.delete(node.id);
+      commentAnnotation.textContent = "";
+      commentAnnotation.style.display = "none";
+    }
+    saveComments();
+    commentEditor.style.display = "none";
+  }
+
+  function deleteComment(e) {
+    if (e) e.stopPropagation();
+    commentInput.value = "";
+    saveComment();
+  }
+
+  commentBtn.addEventListener("click", openEditor);
+  confirmBtn.addEventListener("click", saveComment);
+  deleteBtn.addEventListener("click", deleteComment);
+
+  commentInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") saveComment(e);
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      commentEditor.style.display = "none";
+      commentAnnotation.style.display = nodeComments.has(node.id) ? "" : "none";
+    }
+  });
+
+  // Stop row click from toggling folder when clicking anywhere in editor
+  commentEditor.addEventListener("click", (e) => e.stopPropagation());
+
+  // --- Apply existing highlight color to row ---
+  const existingColor = nodeColors.get(node.id);
+  if (existingColor) {
+    row.style.setProperty("--node-highlight", existingColor + "22");
+    row.style.setProperty("--node-highlight-border", existingColor);
+    row.classList.add("node-highlighted");
+  }
+
+  // --- Color picker button (shown on row hover) ---
+  const colorBtn = document.createElement("button");
+  colorBtn.className = "node-color-btn";
+  colorBtn.title = "Highlight color";
+  colorBtn.textContent = "🎨";
+  colorBtn.setAttribute("aria-label", "Pick highlight color");
+
+  // --- Color palette (hidden until colorBtn clicked) — stays horizontal ---
+  const colorPalette = document.createElement("span");
+  colorPalette.className = "node-color-palette";
+  colorPalette.style.display = "none";
+
+  // "clear" swatch
+  const clearSwatch = document.createElement("button");
+  clearSwatch.className = "node-color-swatch node-color-clear";
+  clearSwatch.title = "Remove highlight";
+  clearSwatch.textContent = "✕";
+  colorPalette.appendChild(clearSwatch);
+
+  for (const { name, value } of CONFIG.HIGHLIGHT_COLORS) {
+    const swatch = document.createElement("button");
+    swatch.className = "node-color-swatch";
+    swatch.style.background = value;
+    swatch.title = name;
+    if (existingColor === value) swatch.classList.add("active");
+    swatch.addEventListener("click", (e) => {
+      e.stopPropagation();
+      nodeColors.set(node.id, value);
+      saveColors();
+      row.style.setProperty("--node-highlight", value + "22");
+      row.style.setProperty("--node-highlight-border", value);
+      row.classList.add("node-highlighted");
+      colorPalette
+        .querySelectorAll(".node-color-swatch")
+        .forEach((s) => s.classList.remove("active"));
+      swatch.classList.add("active");
+      // If folder highlight is active, keep it in sync with the new color
+      if (node.type === "folder" && nodeFolderColors.has(node.id)) {
+        nodeFolderColors.set(node.id, value);
+        saveFolderColors();
+        applyFolderColor(childrenWrap, value);
+      }
+      colorPalette.style.display = "none";
+      colorBtn.style.display = "";
+      // Reveal legend button now that a color is active
+      legendBtn.classList.remove("node-legend-btn--hidden");
+      renderLiveLegend();
+    });
+    colorPalette.appendChild(swatch);
+  }
+
+  // --- "Highlight whole folder" toggle (folders only) ---
+  if (node.type === "folder") {
+    const divider = document.createElement("span");
+    divider.className = "node-color-divider";
+    colorPalette.appendChild(divider);
+
+    const folderToggle = document.createElement("button");
+    folderToggle.className = "node-folder-highlight-toggle";
+    const existingFolderColor = nodeFolderColors.get(node.id);
+    folderToggle.textContent = existingFolderColor ? "📂✓" : "📂";
+    folderToggle.title = existingFolderColor
+      ? "Remove folder highlight"
+      : "Highlight entire folder contents";
+    colorPalette.appendChild(folderToggle);
+
+    folderToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const activeColor = nodeColors.get(node.id);
+      const alreadySet = nodeFolderColors.has(node.id);
+      if (alreadySet) {
+        nodeFolderColors.delete(node.id);
+        saveFolderColors();
+        applyFolderColor(childrenWrap, null);
+        folderToggle.textContent = "📂";
+        folderToggle.title = "Highlight entire folder contents";
+      } else {
+        const colorToUse = activeColor || CONFIG.HIGHLIGHT_COLORS[0].value;
+        nodeFolderColors.set(node.id, colorToUse);
+        saveFolderColors();
+        applyFolderColor(childrenWrap, colorToUse);
+        folderToggle.textContent = "📂✓";
+        folderToggle.title = "Remove folder highlight";
+      }
+      colorPalette.style.display = "none";
+      colorBtn.style.display = "";
+    });
+  }
+
+  clearSwatch.addEventListener("click", (e) => {
+    e.stopPropagation();
+    nodeColors.delete(node.id);
+    saveColors();
+    row.style.removeProperty("--node-highlight");
+    row.style.removeProperty("--node-highlight-border");
+    row.classList.remove("node-highlighted");
+    colorPalette
+      .querySelectorAll(".node-color-swatch")
+      .forEach((s) => s.classList.remove("active"));
+    colorPalette.style.display = "none";
+    colorBtn.style.display = "";
+    legendBtn.classList.add("node-legend-btn--hidden");
+    legendEditor.style.display = "none";
+    renderLiveLegend();
+  });
+
+  colorBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = colorPalette.style.display !== "none";
+    colorPalette.style.display = isOpen ? "none" : "";
+  });
+
+  colorPalette.addEventListener("click", (e) => e.stopPropagation());
+
+  // --- Legend button: appears on hover after 🎨, only when node has a color ---
+  const legendBtn = document.createElement("button");
+  legendBtn.className = "node-legend-btn";
+  if (!existingColor) legendBtn.classList.add("node-legend-btn--hidden");
+  legendBtn.title = "Set legend label for this color";
+  legendBtn.textContent = "📋";
+  legendBtn.setAttribute("aria-label", "Edit legend label");
+
+  // --- Legend inline editor (shown when legendBtn clicked) ---
+  const legendEditor = document.createElement("span");
+  legendEditor.className = "node-legend-editor";
+  legendEditor.style.display = "none";
+
+  const legendInput = document.createElement("input");
+  legendInput.type = "text";
+  legendInput.className = "node-legend-input";
+  legendInput.placeholder = "Legend label for this color…";
+  legendInput.maxLength = 60;
+
+  const legendSaveBtn = document.createElement("button");
+  legendSaveBtn.className = "node-legend-save";
+  legendSaveBtn.textContent = "✓";
+  legendSaveBtn.title = "Save legend label";
+
+  const legendClearBtn = document.createElement("button");
+  legendClearBtn.className = "node-legend-clear";
+  legendClearBtn.textContent = "✕";
+  legendClearBtn.title = "Remove legend label";
+
+  legendEditor.appendChild(legendInput);
+  legendEditor.appendChild(legendSaveBtn);
+  legendEditor.appendChild(legendClearBtn);
+
+  legendBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = legendEditor.style.display !== "none";
+    if (isOpen) {
+      closeLegendEditor();
+      return;
+    }
+    const activeColor = nodeColors.get(node.id);
+    if (!activeColor) return;
+    legendInput.value = colorLegend.get(activeColor) || "";
+    legendInput.dataset.color = activeColor;
+    legendEditor.style.display = "";
+    legendInput.focus();
+    legendInput.select();
+  });
+
+  function closeLegendEditor() {
+    legendEditor.style.display = "none";
+    legendInput.classList.remove("node-legend-input--error");
+    legendInput.title = "";
+    legendInput.dataset.color = "";
+  }
+
+  legendSaveBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const color = legendInput.dataset.color;
+    const val = legendInput.value.trim();
+    if (!color) return;
+    if (val) {
+      // Check if this label is already used by a *different* color
+      const takenBy = [...colorLegend.entries()].find(
+        ([existingColor, existingLabel]) =>
+          existingLabel.toLowerCase() === val.toLowerCase() &&
+          existingColor !== color,
+      );
+      if (takenBy) {
+        legendInput.classList.add("node-legend-input--error");
+        legendInput.title = `"${val}" is already used for another color`;
+        legendInput.focus();
+        return;
+      }
+      legendInput.classList.remove("node-legend-input--error");
+      legendInput.title = "";
+      colorLegend.set(color, val);
+    } else {
+      colorLegend.delete(color);
+    }
+    saveLegend();
+    renderLiveLegend();
+    closeLegendEditor();
+  });
+
+  legendClearBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const color = legendInput.dataset.color;
+    if (color) {
+      colorLegend.delete(color);
+      saveLegend();
+      renderLiveLegend();
+    }
+    closeLegendEditor();
+  });
+
+  legendInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") legendSaveBtn.click();
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      closeLegendEditor();
+    }
+  });
+
+  legendInput.addEventListener("input", () => {
+    legendInput.classList.remove("node-legend-input--error");
+    legendInput.title = "";
+  });
+
+  legendEditor.addEventListener("click", (e) => e.stopPropagation());
+
   row.appendChild(twisty);
   row.appendChild(icon);
   row.appendChild(label);
+  row.appendChild(commentAnnotation);
+  row.appendChild(commentBtn);
+  row.appendChild(commentEditor);
+  row.appendChild(colorBtn);
+  row.appendChild(colorPalette);
+  row.appendChild(legendBtn);
+  row.appendChild(legendEditor);
 
   const childrenWrap = document.createElement("div");
   childrenWrap.className = "children";
+
+  // Apply persisted folder-wide highlight
+  const existingFolderColor = nodeFolderColors.get(node.id);
+  if (existingFolderColor) applyFolderColor(childrenWrap, existingFolderColor);
 
   container.appendChild(row);
   container.appendChild(childrenWrap);
@@ -506,6 +1052,8 @@ function renderTree(root) {
   // auto-open root for nicer UX
   const row = rootEl.querySelector(".node");
   if (row) row.click();
+
+  renderLiveLegend();
 }
 
 function renderChildren(node, childrenWrap) {
@@ -603,6 +1151,7 @@ function applyTheme(mode) {
     document.documentElement.setAttribute("data-theme", mode);
   }
   localStorage.setItem(CONFIG.THEME_KEY, mode);
+  renderLiveLegend();
 }
 
 function getEffectiveTheme() {
@@ -1110,6 +1659,23 @@ async function exportPng({ full }) {
     const clone = elTree.cloneNode(true);
     cloneHost.appendChild(clone);
 
+    // Strip all interactive UI chrome from the clone — buttons, open editors, palettes
+    const exportStripSelectors = [
+      ".node-comment-btn",
+      ".node-comment-editor",
+      ".node-color-btn",
+      ".node-color-palette",
+      ".node-legend-btn",
+      ".node-legend-editor",
+    ];
+    clone
+      .querySelectorAll(exportStripSelectors.join(","))
+      .forEach((el) => el.remove());
+
+    // Append legend if any entries exist
+    const legendEl = buildLegendElement(tv);
+    if (legendEl) cloneHost.appendChild(legendEl);
+
     // icon box sizing inside clone
     cloneHost.querySelectorAll(".icon").forEach((el) => {
       el.style.width = CONFIG.ICON_SIZE + "px";
@@ -1224,6 +1790,84 @@ async function exportPng({ full }) {
       if (cur === "system") applyTheme("system");
     });
   }
+
+  // Build custom styled dropdown to replace native <select>
+  if (!themeSelect) return;
+
+  const OPTIONS = [
+    { value: "system", label: "System" },
+    { value: "dark", label: "Dark" },
+    { value: "light", label: "Light" },
+  ];
+
+  // Hide native select but keep it in DOM for value tracking
+  themeSelect.style.display = "none";
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "theme-select-wrap";
+
+  const trigger = document.createElement("button");
+  trigger.className = "theme-select-trigger";
+  trigger.setAttribute("aria-haspopup", "listbox");
+  trigger.setAttribute("aria-expanded", "false");
+
+  const triggerLabel = document.createElement("span");
+  const triggerArrow = document.createElement("span");
+  triggerArrow.className = "theme-select-arrow";
+  triggerArrow.innerHTML = '<i class="bi bi-chevron-down"></i>';
+  trigger.appendChild(triggerLabel);
+  trigger.appendChild(triggerArrow);
+
+  const panel = document.createElement("div");
+  panel.className = "theme-select-panel";
+  panel.setAttribute("role", "listbox");
+
+  OPTIONS.forEach(({ value, label }) => {
+    const opt = document.createElement("div");
+    opt.className = "theme-select-option";
+    opt.setAttribute("role", "option");
+    opt.dataset.value = value;
+    opt.textContent = label;
+    opt.addEventListener("click", () => {
+      themeSelect.value = value;
+      themeSelect.dispatchEvent(new Event("change"));
+      updateTrigger(value);
+      closePanel();
+    });
+    panel.appendChild(opt);
+  });
+
+  function updateTrigger(value) {
+    const opt = OPTIONS.find((o) => o.value === value);
+    triggerLabel.textContent = opt ? opt.label : value;
+    panel.querySelectorAll(".theme-select-option").forEach((el) => {
+      el.classList.toggle("active", el.dataset.value === value);
+    });
+  }
+
+  function openPanel() {
+    panel.classList.add("open");
+    trigger.setAttribute("aria-expanded", "true");
+  }
+
+  function closePanel() {
+    panel.classList.remove("open");
+    trigger.setAttribute("aria-expanded", "false");
+  }
+
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    panel.classList.contains("open") ? closePanel() : openPanel();
+  });
+
+  document.addEventListener("click", closePanel);
+  panel.addEventListener("click", (e) => e.stopPropagation());
+
+  wrapper.appendChild(trigger);
+  wrapper.appendChild(panel);
+  themeSelect.parentNode.insertBefore(wrapper, themeSelect.nextSibling);
+
+  updateTrigger(saved);
 })();
 
 (function initAdvancedIcons() {
@@ -1251,35 +1895,83 @@ async function exportPng({ full }) {
 
 const lockCheckbox = document.getElementById("lockTreeHeight");
 function syncTreeHeight() {
-  const panel = document.querySelector(".panel");
-  const sidePanel = document.querySelector(".panel.side");
+  const layout = document.querySelector(".layout");
   const treeWrap = document.getElementById("treeWrap");
-  if (!panel || !treeWrap || !lockCheckbox) return;
+  if (!layout || !treeWrap || !lockCheckbox) return;
 
-  panel.dataset.fixed = lockCheckbox.checked ? "true" : "false";
+  layout.dataset.fixed = lockCheckbox.checked ? "true" : "false";
 
-  if (lockCheckbox.checked) {
-    const lockRect = (sidePanel || panel).getBoundingClientRect();
-    const treeRect = treeWrap.getBoundingClientRect();
-    const availableHeight = Math.max(
-      0,
-      Math.floor(lockRect.bottom - treeRect.top),
-    );
-
-    treeWrap.style.height = `${availableHeight}px`;
-    treeWrap.style.maxHeight = `${availableHeight}px`;
-    treeWrap.style.overflowY = "auto";
-  } else {
-    treeWrap.style.height = "";
-    treeWrap.style.maxHeight = "";
-    treeWrap.style.overflowY = "";
-    treeWrap.style.overflow = "";
-  }
+  // Clear any stale inline styles
+  treeWrap.style.height = "";
+  treeWrap.style.maxHeight = "";
+  treeWrap.style.overflowY = "";
+  treeWrap.style.overflow = "";
 }
 
 lockCheckbox?.addEventListener("change", syncTreeHeight);
 window.addEventListener("resize", syncTreeHeight);
 requestAnimationFrame(syncTreeHeight);
+
+// ------------------------
+// Clear-All Buttons
+// ------------------------
+
+(function initClearButtons() {
+  const lockEl = lockCheckbox?.closest("label") ?? lockCheckbox;
+  if (!lockEl) return;
+
+  const controlsWrap =
+    lockEl.closest(".panel-header-controls") ?? lockEl.parentNode;
+
+  const sep = document.createElement("span");
+  sep.className = "sep";
+  controlsWrap.appendChild(sep);
+
+  const btnClearColors = document.createElement("button");
+  btnClearColors.textContent = "🗑 Colors";
+  btnClearColors.className = "btn-clear-all";
+  btnClearColors.title = "Remove all highlights and their legend labels";
+
+  const btnClearLegend = document.createElement("button");
+  btnClearLegend.textContent = "🗑 Legend";
+  btnClearLegend.className = "btn-clear-all";
+  btnClearLegend.title = "Remove all legend labels (keeps colors)";
+
+  const btnClearComments = document.createElement("button");
+  btnClearComments.textContent = "🗑 Comments";
+  btnClearComments.className = "btn-clear-all";
+  btnClearComments.title = "Remove all comments";
+
+  controlsWrap.appendChild(btnClearColors);
+  controlsWrap.appendChild(btnClearLegend);
+  controlsWrap.appendChild(btnClearComments);
+
+  btnClearColors.addEventListener("click", () => {
+    if (!confirm("Clear all highlights and legend labels?")) return;
+    nodeColors.clear();
+    nodeFolderColors.clear();
+    colorLegend.clear();
+    saveColors();
+    saveFolderColors();
+    saveLegend();
+    rerenderIfLoaded();
+    renderLiveLegend();
+  });
+
+  btnClearLegend.addEventListener("click", () => {
+    if (!confirm("Clear all legend labels? Colors will be kept.")) return;
+    colorLegend.clear();
+    saveLegend();
+    renderLiveLegend();
+  });
+
+  btnClearComments.addEventListener("click", () => {
+    if (!confirm("Clear all comments?")) return;
+    nodeComments.clear();
+    saveComments();
+    rerenderIfLoaded();
+  });
+})();
 
 // ------------------------
 // Event Listeners
@@ -1332,5 +2024,53 @@ btnExportView?.addEventListener("click", async () =>
 
 btnExportFull?.addEventListener("click", async () => exportPng({ full: true }));
 
+// ------------------------
+// Notes Panel Toggle
+// ------------------------
+
+(function initNotesToggle() {
+  const NOTES_KEY = "sv_notes_collapsed";
+  const notesPanel = document.querySelector(".panel.side");
+  const closeBtn = document.getElementById("notesCloseBtn");
+  if (!notesPanel || !closeBtn) return;
+
+  // Reopen button — injected into the layout, only visible when panel is hidden
+  const reopenBtn = document.createElement("button");
+  reopenBtn.className = "notes-reopen-btn";
+  reopenBtn.title = "Show notes";
+  reopenBtn.innerHTML = '<i class="bi bi-journal-text"></i>';
+  notesPanel.parentNode.appendChild(reopenBtn);
+
+  function setCollapsed(collapsed, save = true) {
+    const layout = notesPanel.closest(".layout");
+    notesPanel.classList.toggle("notes-panel--collapsed", collapsed);
+    layout?.classList.toggle("notes-hidden", collapsed);
+    reopenBtn.classList.toggle("notes-reopen-btn--visible", collapsed);
+    if (save) localStorage.setItem(NOTES_KEY, collapsed ? "1" : "0");
+    syncTreeHeight();
+  }
+
+  closeBtn.addEventListener("click", () => setCollapsed(true));
+  reopenBtn.addEventListener("click", () => setCollapsed(false));
+
+  // Restore saved state
+  setCollapsed(localStorage.getItem(NOTES_KEY) === "1", false);
+})();
+
 // start clean
 clearTree();
+
+// Ensure legend is hidden on startup regardless of localStorage state
+(function () {
+  const treeWrap = document.getElementById("treeWrap");
+  if (!treeWrap) return;
+  let container = document.getElementById("legendWrap");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "legendWrap";
+    container.style.padding = "0 12px 12px";
+    treeWrap.parentNode.insertBefore(container, treeWrap.nextSibling);
+  }
+  container.style.display = "none";
+  container.innerHTML = "";
+})();
