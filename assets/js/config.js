@@ -8,6 +8,7 @@ const CONFIG = {
   COLORS_KEY: "sv_colors_v1",
   FOLDER_COLORS_KEY: "sv_folder_colors_v1",
   LEGEND_KEY: "sv_legend_v1",
+  EXPORT_EXCLUDED_KEY: "sv_export_excluded_v1",
   HIGHLIGHT_COLORS: [
     { name: "red", value: "#ff6b6b" },
     { name: "orange", value: "#ffa94d" },

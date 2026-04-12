@@ -1,6 +1,6 @@
 # Structure Viewer
 
-A lightweight, browser-based tool for visualizing **folder structures**, **JSON data**, and **public GitHub repositories** as an interactive tree — with optional advanced file-type icons, inline annotations, color highlights, and PNG export.
+A lightweight, browser-based tool for visualizing **folder structures**, **JSON data**, and **public GitHub repositories** as an interactive tree — with optional advanced file-type icons, inline annotations, color highlights, per-node export exclusion, and PNG export.
 
 Built to be fast, privacy-friendly, and dependency-light.  
 Runs entirely in the browser. No uploads. No servers.
@@ -94,6 +94,16 @@ This mode is useful for quickly inspecting project layouts without cloning anyth
 
 ---
 
+### 🚫 Export Exclusion
+
+- Hover any non-root node and click **EX** to exclude it from PNG export
+- Excluded nodes stay visible in the tree, but are dimmed with a strikethrough for clarity
+- Works with both **Export View** and **Export Full**
+- Excluded state is persisted in `localStorage` — survives page reloads
+- Exported legends only include colors that still appear after excluded nodes are removed
+
+---
+
 ### 🗑 Clearing Annotations
 
 Three dedicated buttons sit in the tree panel header:
@@ -138,6 +148,7 @@ Both images show comments, color highlights, folder highlights, and the legend p
 
 - **Export View** – exports exactly what's expanded
 - **Export Full** – auto-expands everything before export
+- Mark nodes with **EX** to leave them out of the exported PNG
 - Optional background (transparent or theme-colored)
 - Export width auto-fits to content
 - Icons are rasterized safely for reliable exports
@@ -175,6 +186,7 @@ Below are example exports showing the available combinations.
 - **Export View** captures only expanded nodes
 - **Export Full** temporarily expands the entire tree
 - Color highlights, comments, and legend are all included in exports
+- Nodes marked with **EX** are omitted from the final image
 
 ---
 
@@ -215,6 +227,7 @@ This tool is safe to use with sensitive local data.
 | Comments       | All modern browsers |
 | Highlights     | All modern browsers |
 | Legend         | All modern browsers |
+| Export exclude | All modern browsers |
 
 ---
 
@@ -225,7 +238,7 @@ This tool is safe to use with sensitive local data.
 1. Open the hosted page
 2. Click **Pick Folder**, **Pick JSON**, or load a **ZIP / GitHub repo**
 3. Explore the tree
-4. Optionally annotate with comments, colors, and legend labels
+4. Optionally annotate with comments, colors, legend labels, and export exclusions
 5. Export if needed
 
 ### Local

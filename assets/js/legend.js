@@ -1,6 +1,5 @@
 // Builds and returns a legend DOM element styled with themeVars tv
-function buildLegendElement(tv) {
-  const usedColors = getUsedColors();
+function buildLegendElement(tv, usedColors = getUsedColors()) {
   // Only include entries for colors that are actually used in the tree
   const entries = CONFIG.HIGHLIGHT_COLORS.filter(
     ({ value }) => usedColors.has(value) && colorLegend.has(value),

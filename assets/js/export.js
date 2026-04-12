@@ -132,13 +132,27 @@ async function exportPng({ full }) {
       ".node-color-palette",
       ".node-legend-btn",
       ".node-legend-editor",
+      ".node-export-btn",
     ];
     clone
       .querySelectorAll(exportStripSelectors.join(","))
       .forEach((el) => el.remove());
 
+    clone
+      .querySelectorAll('[data-export-excluded="true"]')
+      .forEach((el) => el.remove());
+
+    const exportedNodeIds = new Set(
+      Array.from(clone.querySelectorAll("[data-node-id]"))
+        .map((el) => el.getAttribute("data-node-id"))
+        .filter(Boolean),
+    );
+
     // Append legend if any entries exist
-    const legendEl = buildLegendElement(tv);
+    const legendEl = buildLegendElement(
+      tv,
+      getUsedColorsForNodeIds(exportedNodeIds),
+    );
     if (legendEl) cloneHost.appendChild(legendEl);
 
     // icon box sizing inside clone

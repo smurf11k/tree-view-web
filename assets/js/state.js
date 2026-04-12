@@ -83,10 +83,43 @@ function saveLegend() {
   } catch {}
 }
 
+const exportExcludedNodeIds = (function loadExportExcludedNodeIds() {
+  try {
+    const raw = localStorage.getItem(CONFIG.EXPORT_EXCLUDED_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw));
+  } catch {
+    return new Set();
+  }
+})();
+
+function saveExportExcludedNodeIds() {
+  try {
+    localStorage.setItem(
+      CONFIG.EXPORT_EXCLUDED_KEY,
+      JSON.stringify(Array.from(exportExcludedNodeIds.values())),
+    );
+  } catch {}
+}
+
 // Returns the set of colors currently in use across the tree
 function getUsedColors() {
   const used = new Set();
   for (const v of nodeColors.values()) used.add(v);
   for (const v of nodeFolderColors.values()) used.add(v);
+  return used;
+}
+
+function getUsedColorsForNodeIds(nodeIds) {
+  const used = new Set();
+
+  for (const [nodeId, color] of nodeColors.entries()) {
+    if (nodeIds.has(nodeId)) used.add(color);
+  }
+
+  for (const [nodeId, color] of nodeFolderColors.entries()) {
+    if (nodeIds.has(nodeId)) used.add(color);
+  }
+
   return used;
 }

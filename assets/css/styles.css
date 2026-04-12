@@ -751,32 +751,79 @@ select {
 
 .node-comment-btn,
 .node-color-btn,
-.node-legend-btn {
+.node-legend-btn,
+.node-export-btn {
   opacity: 0;
   background: none;
-  border: none;
+  border: 1px solid transparent;
   cursor: pointer;
-  padding: 0 4px;
-  font-size: 12px;
+  padding: 1px 5px;
+  font-size: 11px;
   line-height: 1;
-  transition: opacity 0.15s;
+  border-radius: 4px;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .node:hover .node-comment-btn,
 .node:hover .node-color-btn,
-.node:hover .node-legend-btn:not(.node-legend-btn--hidden) {
+.node:hover .node-legend-btn:not(.node-legend-btn--hidden),
+.node:hover .node-export-btn:not(.node-export-btn--hidden) {
   opacity: 0.6;
 }
 
 .node:hover .node-comment-btn:hover,
 .node:hover .node-color-btn:hover,
-.node:hover .node-legend-btn:not(.node-legend-btn--hidden):hover {
+.node:hover .node-legend-btn:not(.node-legend-btn--hidden):hover,
+.node:hover .node-export-btn:not(.node-export-btn--hidden):hover {
   opacity: 1;
 }
 
 /* --hidden modifier: legend button stays invisible until a color is set */
 .node-legend-btn--hidden {
   pointer-events: none;
+}
+
+.node-export-btn--hidden {
+  display: none;
+}
+
+.node-export-btn {
+  margin-left: 2px;
+  font-family: var(--mono);
+  color: var(--muted);
+}
+
+.node-export-btn:hover {
+  background: var(--btnHover);
+  border-color: var(--border);
+}
+
+.node-export-btn--excluded {
+  opacity: 1 !important;
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.12);
+  border-color: rgba(255, 107, 107, 0.35);
+}
+
+.node.node-export-excluded {
+  opacity: 0.72;
+}
+
+.node.node-export-excluded .label {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.children.children-export-excluded {
+  opacity: 0.72;
+}
+
+.children.children-export-excluded .label {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }
 
 /* =========================

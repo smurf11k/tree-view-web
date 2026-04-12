@@ -42,9 +42,21 @@ function createNodeElement(node) {
   const container = document.createElement("div");
   container.className = "treeItem";
   container.dataset.nodeId = node.id;
+  if (exportExcludedNodeIds.has(node.id)) {
+    container.dataset.exportExcluded = "true";
+  }
 
   const row = document.createElement("div");
   row.className = "node";
+  if (exportExcludedNodeIds.has(node.id)) {
+    row.classList.add("node-export-excluded");
+  }
+
+  const childrenWrap = document.createElement("div");
+  childrenWrap.className = "children";
+  if (exportExcludedNodeIds.has(node.id)) {
+    childrenWrap.classList.add("children-export-excluded");
+  }
 
   const twisty = document.createElement("span");
   twisty.className = "twisty";
@@ -386,6 +398,40 @@ function createNodeElement(node) {
 
   legendEditor.addEventListener("click", (e) => e.stopPropagation());
 
+  const exportBtn = document.createElement("button");
+  exportBtn.className = "node-export-btn";
+  exportBtn.textContent = "EX";
+  exportBtn.setAttribute("aria-label", "Toggle export exclusion");
+
+  function syncExportButtonState() {
+    const excluded = exportExcludedNodeIds.has(node.id);
+    container.dataset.exportExcluded = excluded ? "true" : "false";
+    row.classList.toggle("node-export-excluded", excluded);
+    childrenWrap.classList.toggle("children-export-excluded", excluded);
+    exportBtn.classList.toggle("node-export-btn--excluded", excluded);
+    exportBtn.title = excluded
+      ? "Include this node in export"
+      : "Exclude this node from export";
+  }
+
+  if (node.id !== currentRoot?.id) {
+    exportBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (exportExcludedNodeIds.has(node.id)) {
+        exportExcludedNodeIds.delete(node.id);
+      } else {
+        exportExcludedNodeIds.add(node.id);
+      }
+      saveExportExcludedNodeIds();
+      syncExportButtonState();
+    });
+    syncExportButtonState();
+  } else {
+    exportBtn.classList.add("node-export-btn--hidden");
+    exportBtn.disabled = true;
+    exportBtn.title = "The root node is always included in exports";
+  }
+
   row.appendChild(twisty);
   row.appendChild(icon);
   row.appendChild(label);
@@ -396,9 +442,7 @@ function createNodeElement(node) {
   row.appendChild(colorPalette);
   row.appendChild(legendBtn);
   row.appendChild(legendEditor);
-
-  const childrenWrap = document.createElement("div");
-  childrenWrap.className = "children";
+  row.appendChild(exportBtn);
 
   // Apply persisted folder-wide highlight
   const existingFolderColor = nodeFolderColors.get(node.id);
