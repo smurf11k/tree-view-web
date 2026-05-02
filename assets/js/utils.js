@@ -19,20 +19,23 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-function getFileExtension(name) {
-  const base = name.split("/").pop();
+function getFileExtension(filename) {
+  if (!filename) return "";
+  const base = filename.split("/").pop().toLowerCase();
 
-  // Check for compound extensions first (e.g., .csproj.user, .tar.gz)
+  // Compound
   for (const ext of COMPOUND_EXTENSIONS) {
-    if (base.toLowerCase().endsWith("." + ext)) {
-      return ext;
-    }
+    if (base.endsWith("." + ext) || base === ext) return ext;
   }
 
-  // Standard single extension
-  const i = base.lastIndexOf(".");
-  if (i <= 0 || i === base.length - 1) return "";
-  return base.slice(i + 1).toLowerCase();
+  // Special - direct lookup
+  const specialMap = window.SPECIAL_FILENAMES || {};
+  if (specialMap[base]) return specialMap[base];
+
+  // Standard extension
+  const dotIndex = base.lastIndexOf(".");
+  if (dotIndex > 0) return base.slice(dotIndex + 1);
+  return base;
 }
 
 function isPlainObject(v) {

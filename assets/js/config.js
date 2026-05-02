@@ -58,4 +58,10 @@ const KEY_FALLBACKS = {
   word: ["doc"],
 };
 
-const COMPOUND_EXTENSIONS = ["csproj.user", "vbproj.user", "tar.gz", "tar.bz2"];
+const COMPOUND_EXTENSIONS = [
+  "csproj.user",
+  "vbproj.user",
+  "tar.gz",
+  "tar.bz2",
+  "env.example",
+];

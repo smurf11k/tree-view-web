@@ -32,13 +32,13 @@ window.EXT_TO_ICONKEY = {
   cpp: "cpp",
   cc: "cpp",
   cxx: "cpp",
-  h: "h",
-  hpp: "hpp",
-  hxx: "hpp",
+  h: "c",
+  hpp: "cpp",
+  hxx: "cpp",
   swift: "swift",
   kt: "kotlin",
   kts: "kotlin",
-  dart: "dart",
+  dart: "dartlang", //TODO: fix
   r: "r",
   lua: "lua",
   perl: "perl",
@@ -74,7 +74,7 @@ window.EXT_TO_ICONKEY = {
   vb: "vb",
   fs: "fsharp",
   fsx: "fsharp",
-  resx: "resx",
+  resx: "resx", //TODO: fix
 
   // ---- Web / Frontend ----
   wasm: "wasm",
@@ -86,14 +86,14 @@ window.EXT_TO_ICONKEY = {
   gradle: "gradle",
   dockerfile: "docker",
   dockerignore: "docker",
-  makefile: "makefile",
+  makefile: "makefile", //TODO: fix
   cmake: "cmake",
   gitignore: "git",
   gitattributes: "git",
   gitmodules: "git",
   npmrc: "npm",
   nvmrc: "node",
-  editorconfig: "editorconfig",
+  editorconfig: "config", //editorconfig
   eslintrc: "eslint",
   prettierrc: "prettier",
   babelrc: "babel",
@@ -102,15 +102,15 @@ window.EXT_TO_ICONKEY = {
   tsconfig: "tsconfig",
 
   // ---- Package Managers ----
-  lock: "lock",
+  lock: "npm",
 
   // ---- Data ----
-  csv: "csv",
-  tsv: "csv",
+  csv: "csv", //TODO: fix
+  tsv: "csv", //TODO: fix
   parquet: "database",
   db: "database",
-  sqlite: "database",
-  sqlite3: "database",
+  sqlite: "sqlite",
+  sqlite3: "sqlite",
 
   // ---- Media (additional) ----
   mp3: "audio",
@@ -147,7 +147,7 @@ window.EXT_TO_ICONKEY = {
   doc: "word",
   docx: "word",
   odt: "word",
-  rtf: "document",
+  rtf: "document", //TODO: fix
   ppt: "powerpoint",
   pptx: "powerpoint",
   odp: "powerpoint",
@@ -175,19 +175,22 @@ window.EXT_TO_ICONKEY = {
   eot: "font",
 
   // ---- Config / misc ----
-  env: "settings",
-  ini: "settings",
-  cfg: "settings",
-  toml: "settings",
-  properties: "settings",
-  conf: "settings",
+  env: "config",
+  "env.example": "config",
+  ini: "config",
+  cfg: "config",
+  toml: "config",
+  properties: "config",
+  conf: "config",
+  htaccess: "apache",
 
   // ---- Certificates / Security ----
-  pem: "certificate",
-  crt: "certificate",
-  cer: "certificate",
+  pem: "cert",
+  crt: "cert",
+  cer: "cert",
   key: "key",
   pub: "key",
+  license: "license",
 
   // ---- Markup / Templates ----
   tex: "tex",
@@ -204,8 +207,22 @@ window.EXT_TO_ICONKEY = {
   so: "binary",
   dylib: "binary",
   app: "binary",
-  apk: "android",
-  ipa: "apple",
+  apk: "binary",
+  ipa: "applescript",
   deb: "debian",
-  rpm: "rpm",
+  rpm: "rpm", //TODO: fix
+};
+
+// Special filename
+window.SPECIAL_FILENAMES = {
+  dockerfile: "dockerfile",
+  license: "license",
+  ".gitignore": "gitignore",
+  ".gitattributes": "gitattributes",
+  ".editorconfig": "editorconfig",
+  ".htaccess": "htaccess",
+  ".env": "env",
+  ".env.example": "env",
+  ".env.testing": "env",
+  "composer.lock": "lock",
 };
