@@ -91,6 +91,7 @@ window.EXT_TO_ICONKEY = {
   gitignore: "git",
   gitattributes: "git",
   gitmodules: "git",
+  gitkeep: "git",
   npmrc: "npm",
   nvmrc: "node",
   editorconfig: "config", //editorconfig
@@ -219,6 +220,7 @@ window.SPECIAL_FILENAMES = {
   license: "license",
   ".gitignore": "gitignore",
   ".gitattributes": "gitattributes",
+  ".gitkeep": "gitkeep",
   ".editorconfig": "editorconfig",
   ".htaccess": "htaccess",
   ".env": "env",
