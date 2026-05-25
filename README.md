@@ -1,3 +1,5 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 # Structure Viewer
 
 A lightweight, browser-based tool for visualizing **folder structures**, **JSON data**, and **public GitHub repositories** as an interactive tree — with optional advanced file-type icons, inline annotations, color highlights, per-node export exclusion, and PNG export.
